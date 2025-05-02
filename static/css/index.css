@@ -1,0 +1,195 @@
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #121212, #370d35);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    padding: 20px;
+}
+
+.card {
+    background: linear-gradient(135deg, #1e1e1e, #2a1334);
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+}
+
+h2 {
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+input {
+    height: 50px;
+    font-size: 16px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) inset;
+    border: none;
+    transition: all 0.3s ease;
+}
+
+input:focus {
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3);
+}
+
+.btn {
+    height: 50px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #f43f5e, #db2777);
+    border: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none;
+}
+
+#thumbnailContainer img {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+
+#thumbnailContainer img:hover {
+    transform: scale(1.02);
+}
+
+/* Video info card */
+#videoInfoContainer .card {
+    background: linear-gradient(135deg, #121212, #1e1e1e);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Confetti animation */
+.confetti {
+    position: fixed;
+    width: 15px;
+    height: 15px;
+    background-color: #f2d74e;
+    opacity: 0.7;
+    top: -15px;
+    border-radius: 50%;
+    animation: fall linear infinite;
+    z-index: 9999;
+}
+
+@keyframes fall {
+    to {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+/* Different confetti shapes */
+.confetti:nth-child(2n) {
+    width: 7px;
+    height: 7px;
+    animation-duration: 2.5s;
+}
+
+.confetti:nth-child(3n) {
+    width: 10px;
+    height: 10px;
+    animation-duration: 3.5s;
+}
+
+.confetti:nth-child(5n) {
+    width: 12px;
+    height: 12px;
+    animation-duration: 4s;
+    border-radius: 0;
+    transform: rotate(45deg);
+}
+
+/* Spinner */
+.spinner-border {
+    color: #a855f7;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 576px) {
+    .card {
+        padding: 15px !important;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+}
+
+/* Dark scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a855f7;
+}
+
+.instagram-link:hover {
+    text-decoration: underline;
+}
+  
+  .insta-name {
+    color: #ffd500; /* Color tipo Instagram */
+    font-weight: bold;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+  
+
+.confetti {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    background-color: #f2d74e;
+    opacity: 0.7;
+    top: -10px;
+    animation: fall linear infinite;
+    z-index: 9999;
+}
+
+@keyframes fall {
+    to {
+      transform: translateY(100vh) rotate(720deg);
+      opacity: 0;
+    }
+}

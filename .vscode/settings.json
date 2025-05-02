@@ -1,0 +1,18 @@
+{
+    "git.ignoreLimitWarning": true,
+    // Tema de íconos
+    "workbench.iconTheme": "material-icon-theme",
+  
+    // Asignación de íconos personalizados a carpetas específicas
+    "material-icon-theme.folders.associations": {
+    "layout": "layout",
+    "meta": "meta",
+    "scripts": "javascript",
+    "forms": "json",
+    "modals": "folder",          // Usa íconos existentes como 'folder', 'components', 'views', etc.  
+    "banners": "advertisement",   // o "megaphone" si quieres probar
+    "seo": "tag",
+    "alerts": "alert",
+    "loaders": "sync"
+    }
+}

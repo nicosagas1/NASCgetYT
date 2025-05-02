@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+    <!-- #region head -->
+    {% include 'partials/layout/_headIndex.html' %}
+    <!-- #endregion -->
+    <body>
+        <div class="container d-flex justify-content-center align-items-center min-vh-100">
+            <div class="card p-4 shadow-lg text-center" style="max-width: 500px; width: 100%;">
+                <!-- #region title and subtitle -->
+                <div class="mb-4">
+                    <h2 class="text-white mb-3">
+                        <i class="bi bi-youtube text-danger"></i> YouTube Downloader
+                    </h2>
+                    <p class="text-light mb-0">Descarga videos y música de YouTube en MP3 o MP4</p>
+                </div>
+                <!-- #endregion -->
+
+                <!-- #region input URL -->
+                {% include 'components/inputUrl.html' %}
+                <!-- #endregion -->
+
+                <!-- #region Error message -->
+                {% include 'components/error-message.html' %}
+                <!-- #endregion -->
+                
+                <!-- #region videoInfo container -->
+                {% include 'components/videoInfoContainer.html' %}
+                <!-- #endregion -->
+                
+                <!-- #region thumbnail container -->
+                {% include 'components/thumbnailContainer.html' %}
+                <!-- #endregion -->
+
+                <!-- #region download buttons -->
+                {% include 'components/downloadButtons.html' %}
+                <!-- #endregion -->
+                
+                <!-- #region status_msm -->
+                {% include 'components/status_msm.html' %}
+                <!-- #endregion -->
+                
+                <!-- #region instructions -->
+                {% include 'components/instructions.html' %}
+                <!-- #endregion -->
+
+                <!-- #region footer -->
+                {% include 'partials/_footer.html' %}
+                <!-- #endregion -->
+            </div>
+        </div>
+        {% include 'partials/scripts/boostrapIndex.html' %}
+    </body>
+</html>
