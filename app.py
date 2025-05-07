@@ -9,6 +9,7 @@ import shutil
 import uuid
 
 app = Flask(__name__)
+app.secret_key = '7772428b-01cf-4d05-9c3e-cea510398586'
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -156,7 +157,7 @@ def convert():
             return response
 
     except Exception as e:
-        # Clean up the temp directory in case of error
+        # Clean up the temp directory in case of error app.run()
         try:
             shutil.rmtree(request_tmpdir, ignore_errors=True)
         except:
@@ -165,5 +166,5 @@ def convert():
         logger.error(f"Error during conversion: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run()
