@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 # Set FFmpeg path - adjust this to your specific location if needed
 FFMPEG_PATH = r"C:\\ffmpeg\\bin"
 
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/123.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 def clean_filename(title):
     """Removes special characters and shortens the filename."""
     title = re.sub(r'[\\/*?:"<>|]', '', title)
@@ -40,6 +49,7 @@ def get_video_info():
         options = {
             "skip_download": True,
             "quiet": True,
+            "headers": HEADERS
         }
         
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -76,6 +86,7 @@ def convert():
                 "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
                 "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
                 "ffmpeg_location": FFMPEG_PATH,
+                "headers": HEADERS
             }
         else:  # mp3
             options = {
@@ -89,6 +100,7 @@ def convert():
                     }
                 ],
                 "ffmpeg_location": FFMPEG_PATH,
+                "headers": HEADERS
             }
 
         logger.info(f"Created temporary directory: {request_tmpdir}")
