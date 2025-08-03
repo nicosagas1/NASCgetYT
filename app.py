@@ -209,7 +209,7 @@ def get_random_headers():
     }
 
 def get_extraction_strategies():
-    """Return ultra-fast extraction strategies optimized for Render deployment."""
+    """Return bulletproof extraction strategies that actually work."""
     base_headers = get_random_headers()
     
     return [
@@ -219,59 +219,37 @@ def get_extraction_strategies():
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android_testsuite"],
-                        "skip": ["hls", "dash"]
+                        "player_client": ["android_testsuite"]
                     }
                 },
-                "socket_timeout": 15,
-                "retries": 0,  # No retries for speed
-                "fragment_retries": 0
+                "socket_timeout": 30,
+                "retries": 1
             }
         },
         {
-            "name": "Web Creator",
+            "name": "iOS Music",
             "options": {
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["web_creator"],
-                        "skip": ["hls", "dash"]
+                        "player_client": ["ios_music"]
                     }
                 },
-                "socket_timeout": 15,
-                "retries": 0,
-                "fragment_retries": 0
+                "socket_timeout": 30,
+                "retries": 1
             }
         },
         {
-            "name": "iOS Fast",
-            "options": {
-                "http_headers": {
-                    **base_headers,
-                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-                },
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["ios"],
-                        "skip": ["hls", "dash"]
-                    }
-                },
-                "socket_timeout": 15,
-                "retries": 0
-            }
-        },
-        {
-            "name": "Android Simple",
+            "name": "Android VR",
             "options": {
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android"],
-                        "skip": ["hls", "dash"]
+                        "player_client": ["android_vr"]
                     }
                 },
-                "socket_timeout": 15,
-                "retries": 0
+                "socket_timeout": 30,
+                "retries": 1
             }
         },
         {
@@ -280,12 +258,45 @@ def get_extraction_strategies():
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["web_embedded"],
-                        "skip": ["hls", "dash"]
+                        "player_client": ["web_embedded"]
                     }
                 },
-                "socket_timeout": 20,
-                "retries": 0
+                "socket_timeout": 30,
+                "retries": 1
+            }
+        },
+        {
+            "name": "TV Embedded",
+            "options": {
+                "http_headers": base_headers,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["tv_embedded"]
+                    }
+                },
+                "socket_timeout": 30,
+                "retries": 1
+            }
+        },
+        {
+            "name": "Android Basic",
+            "options": {
+                "http_headers": base_headers,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android"]
+                    }
+                },
+                "socket_timeout": 30,
+                "retries": 1
+            }
+        },
+        {
+            "name": "Web Basic",
+            "options": {
+                "http_headers": base_headers,
+                "socket_timeout": 30,
+                "retries": 1
             }
         }
     ]
@@ -435,7 +446,28 @@ def get_video_info():
         
         safe_log("ALL INFO EXTRACTION FAILED", 'error')
         
-        # Fast fail - no update attempts to avoid timeouts
+        # Try one more time with basic options as last resort
+        try:
+            safe_log("Trying basic extraction as last resort...")
+            with yt_dlp.YoutubeDL({
+                "skip_download": True,
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 45
+            }) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                if info and info.get("title"):
+                    safe_log("SUCCESS with basic extraction!")
+                    return jsonify({
+                        "title": info.get("title"),
+                        "duration": info.get("duration"),
+                        "thumbnail": info.get("thumbnail"),
+                        "channel": info.get("uploader"),
+                        "views": info.get("view_count")
+                    })
+        except Exception as e:
+            safe_log(f"Basic extraction also failed: {str(e)}", 'error')
+        
         return jsonify({"error": "Video no disponible temporalmente. Intenta con otro video."}), 503
         
     except Exception as e:
@@ -549,8 +581,59 @@ def convert():
                 safe_log(f"{strategy_name} failed: {error_msg[:100]}", 'warning')
                 continue
         
-        # Fast fail - no complex error analysis to avoid timeouts
         safe_log("ALL DOWNLOAD STRATEGIES FAILED", 'error')
+        
+        # Try basic download as last resort
+        try:
+            safe_log("Trying basic download as last resort...")
+            
+            basic_options = {
+                "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
+                "ffmpeg_location": FFMPEG_PATH,
+                "no_warnings": True,
+                "socket_timeout": 45
+            }
+            
+            if video_format == "mp4":
+                basic_options["format"] = "best[height<=720]/best"
+            else:  # mp3
+                basic_options.update({
+                    "format": "bestaudio/best",
+                    "postprocessors": [{
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }]
+                })
+            
+            with yt_dlp.YoutubeDL(basic_options) as ydl:
+                ydl.download([video_url])
+            
+            # Find downloaded file
+            ext = "mp3" if video_format == "mp3" else "mp4"
+            for root, dirs, filenames in os.walk(request_tmpdir):
+                for file in filenames:
+                    if file.endswith(f".{ext}"):
+                        downloaded_file = os.path.join(root, file)
+                        if os.path.exists(downloaded_file) and os.path.getsize(downloaded_file) > 0:
+                            safe_log("SUCCESS with basic download!")
+                            title = clean_filename(os.path.basename(downloaded_file))
+                            if not title.endswith(f".{ext}"):
+                                title = f"{title}.{ext}"
+                            
+                            return send_file(
+                                downloaded_file,
+                                as_attachment=True,
+                                download_name=title,
+                                mimetype="audio/mpeg" if ext == "mp3" else "video/mp4"
+                            )
+                        break
+                if downloaded_file:
+                    break
+                    
+        except Exception as e:
+            safe_log(f"Basic download also failed: {str(e)}", 'error')
+        
         return jsonify({"error": "Descarga no disponible temporalmente. Intenta con otro video."}), 503
         
     except Exception as e:
