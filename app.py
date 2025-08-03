@@ -28,6 +28,39 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = '7772428b-01cf-4d05-9c3e-cea510398586'
 
+# Global error handlers to ensure JSON responses
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({"error": "Endpoint no encontrado"}), 404
+
+@app.errorhandler(405)
+def method_not_allowed_error(error):
+    return jsonify({"error": "Método no permitido"}), 405
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({"error": "Error interno del servidor. Intenta de nuevo."}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception: {str(e)}")
+    return jsonify({"error": f"Error inesperado: {str(e)}"}), 500
+
+@app.before_request
+def before_request():
+    """Ensure request is JSON for API endpoints."""
+    if request.endpoint in ['get_video_info', 'convert', 'update_ytdlp_route']:
+        if request.method == 'POST' and not request.is_json:
+            return jsonify({"error": "Content-Type debe ser application/json"}), 400
+
+@app.after_request
+def after_request(response):
+    """Ensure JSON responses have correct headers."""
+    if response.mimetype == 'application/json':
+        response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    return response
+
 # Configure logging with better format
 logging.basicConfig(
     level=logging.INFO,
@@ -193,218 +226,265 @@ def index():
 @app.route("/get_video_info", methods=["POST"])
 def get_video_info():
     """Endpoint to fetch video information without downloading."""
+    try:
+        # Validate request
+        if not request.is_json:
+            return jsonify({"error": "Content-Type debe ser application/json"}), 400
+            
     data = request.get_json()
+        if not data:
+            return jsonify({"error": "JSON inválido o vacío"}), 400
+            
     video_url = data.get("url")
-    
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
     
-    # Try multiple extraction strategies
-    strategies = get_extraction_strategies()
-    last_error = None
+        # Clean URL
+        video_url = video_url.strip()
+        if not video_url:
+            return jsonify({"error": "URL vacía"}), 400
     
-    for i, strategy in enumerate(strategies):
-        try:
-            strategy_name = strategy.get("name", f"Strategy {i+1}")
-            logger.info(f"🔄 Trying info extraction {i+1}/5: {strategy_name}")
-            
-            options = {
-                "skip_download": True,
-                "quiet": True,
-                "no_warnings": True,
-                **strategy.get("options", {})
-            }
-            
-            # Simple delay between attempts
-            if i > 0:
-                delay = 3 + i  # 3, 4, 5, 6, 7 seconds
-                logger.info(f"⏳ Waiting {delay}s...")
-                time.sleep(delay)
-            
-            with yt_dlp.YoutubeDL(options) as ydl:
-                logger.info(f"📊 Extracting video info using {strategy_name}")
-                info = ydl.extract_info(video_url, download=False)
-                
-                if info and info.get("title"):
-                    logger.info(f"🎉 INFO SUCCESS with {strategy_name}: {info.get('title')}")
-                    return jsonify({
-                        "title": info.get("title"),
-                        "duration": info.get("duration"),
-                        "thumbnail": info.get("thumbnail"),
-                        "channel": info.get("uploader"),
-                        "views": info.get("view_count")
-                    })
-                else:
-                    raise Exception("No video information found")
-                
-        except Exception as e:
-            last_error = e
-            error_msg = str(e)
-            logger.warning(f"❌ {strategy_name} failed: {error_msg[:150]}")
-            continue
+    except Exception as e:
+        logger.error(f"Error parsing request: {e}")
+        return jsonify({"error": "Error al procesar la solicitud"}), 400
     
-    # All strategies failed
-    logger.error("All extraction strategies failed")
-    
-    # Final error handling
-    logger.error("🚫 ALL INFO EXTRACTION FAILED")
-    
-    if last_error:
-        error_str = str(last_error)
-        logger.error(f"Last error was: {error_str}")
+    try:
+        # Try multiple extraction strategies
+        strategies = get_extraction_strategies()
+        last_error = None
         
-        # Try updating yt-dlp as last resort
-        logger.info("🔄 Attempting yt-dlp update as last resort...")
-        update_yt_dlp()
+        for i, strategy in enumerate(strategies):
+            try:
+                strategy_name = strategy.get("name", f"Strategy {i+1}")
+                logger.info(f"🔄 Trying info extraction {i+1}/5: {strategy_name}")
+                
+        options = {
+            "skip_download": True,
+            "quiet": True,
+                    "no_warnings": True,
+                    **strategy.get("options", {})
+                }
+                
+                # Simple delay between attempts
+                if i > 0:
+                    delay = 3 + i  # 3, 4, 5, 6, 7 seconds
+                    logger.info(f"⏳ Waiting {delay}s...")
+                    time.sleep(delay)
+                
+        with yt_dlp.YoutubeDL(options) as ydl:
+                    logger.info(f"📊 Extracting video info using {strategy_name}")
+            info = ydl.extract_info(video_url, download=False)
+            
+                    if info and info.get("title"):
+                        logger.info(f"🎉 INFO SUCCESS with {strategy_name}: {info.get('title')}")
+            return jsonify({
+                "title": info.get("title"),
+                "duration": info.get("duration"),
+                "thumbnail": info.get("thumbnail"),
+                "channel": info.get("uploader"),
+                "views": info.get("view_count")
+            })
+                    else:
+                        raise Exception("No video information found")
+                        
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                logger.warning(f"❌ {strategy_name} failed: {error_msg[:150]}")
+                continue
         
-        return jsonify({"error": "No se pudo obtener información del video. Sistema actualizado automáticamente. Intenta con otro video o espera 10 minutos."}), 503
+        # All strategies failed
+        logger.error("🚫 ALL INFO EXTRACTION FAILED")
+        
+        if last_error:
+            error_str = str(last_error)
+            logger.error(f"Last error was: {error_str}")
+            
+            # Try updating yt-dlp as last resort
+            logger.info("🔄 Attempting yt-dlp update as last resort...")
+            update_yt_dlp()
+            
+            return jsonify({"error": "No se pudo obtener información del video. Sistema actualizado automáticamente. Intenta con otro video o espera 10 minutos."}), 503
+        
+        return jsonify({"error": "Error desconocido. Intenta con otro video."}), 503
     
-    return jsonify({"error": "Error desconocido. Intenta con otro video."}), 503
+    except Exception as e:
+        logger.error(f"Critical error in get_video_info: {str(e)}")
+        return jsonify({"error": "Error crítico del servidor. Intenta de nuevo."}), 500
 
 @app.route("/convert", methods=["POST"])
 def convert():
-    data = request.get_json()
-    video_url = data.get("url")
-    video_format = data.get("format")  # "mp3" or "mp4"
-
-    if not video_url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    # Create the main temporary directory for this request
-    request_tmpdir = tempfile.mkdtemp()
-    
-    # Try multiple extraction strategies for downloads
-    strategies = get_extraction_strategies()
-    last_error = None
-    
-    for i, strategy in enumerate(strategies):
-        try:
-            strategy_name = strategy.get("name", f"Strategy {i+1}")
-            logger.info(f"🔄 Trying download {i+1}/5: {strategy_name}")
-            
-            # Configure yt-dlp options based on format and strategy
-            common_options = {
-                "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
-                "ffmpeg_location": FFMPEG_PATH,
-                "no_warnings": True,
-                **strategy.get("options", {})
-            }
-            
-            # Simple delay between attempts
-            if i > 0:
-                delay = 5 + (i * 2)  # 5, 7, 9, 11, 13 seconds
-                logger.info(f"⏳ Waiting {delay}s before download retry...")
-                time.sleep(delay)
-            
-            if video_format == "mp4":
-                options = {
-                    **common_options,
-                    "format": "best[height<=720]/best",
-                }
-            else:  # mp3
-                options = {
-                    **common_options,
-                    "format": "bestaudio/best",
-                    "postprocessors": [
-                        {
-                            "key": "FFmpegExtractAudio",
-                            "preferredcodec": "mp3",
-                            "preferredquality": "192",
-                        }
-                    ]
-                }
-
-            logger.info(f"Created temporary directory: {request_tmpdir}")
-            
-            with yt_dlp.YoutubeDL(options) as ydl:
-                logger.info(f"⬇️ Starting download with {strategy_name}")
-                
-                # Extract info and download
-                info = ydl.extract_info(video_url, download=True)
-                
-                if not info or not info.get("title"):
-                    raise Exception("Download failed - no video info")
-                
-                title = clean_filename(info["title"])
-                ext = "mp4" if video_format == "mp4" else "mp3"
-                
-                # Find any file with the correct extension
-                downloaded_file = None
-                files = os.listdir(request_tmpdir)
-                logger.info(f"📁 Files in directory: {files}")
-                
-                for file in files:
-                    if file.endswith(f".{ext}"):
-                        downloaded_file = os.path.join(request_tmpdir, file)
-                        logger.info(f"✅ Found downloaded file: {file}")
-                        break
-                
-                if not downloaded_file or not os.path.exists(downloaded_file):
-                    raise Exception(f"No {ext} file found after download")
-                    
-                # Verify file has content
-                file_size = os.path.getsize(downloaded_file)
-                if file_size == 0:
-                    raise Exception("Downloaded file is empty")
-                
-                logger.info(f"📊 File size: {file_size} bytes")
-                
-                # Set correct mime type
-                mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
-                
-                # Send the file to the client
-                response = send_file(
-                    downloaded_file, 
-                    as_attachment=True, 
-                    download_name=f"{title}.{ext}",
-                    mimetype=mime_type
-                )
-                
-                # Setup cleanup callback
-                @response.call_on_close
-                def cleanup():
-                    try:
-                        logger.info(f"🧹 Cleaning up: {request_tmpdir}")
-                        shutil.rmtree(request_tmpdir, ignore_errors=True)
-                    except:
-                        pass
-                
-                logger.info(f"🎉 DOWNLOAD SUCCESS with {strategy_name}: {title}.{ext}")
-                return response
-                
-        except Exception as e:
-            last_error = e
-            error_msg = str(e)
-            logger.error(f"❌ {strategy_name} failed: {error_msg}")
-            
-            # Clear partial files
-            try:
-                for file in os.listdir(request_tmpdir):
-                    os.remove(os.path.join(request_tmpdir, file))
-            except:
-                pass
-            
-            continue
-    
-    # All strategies failed - cleanup and return error
     try:
-        shutil.rmtree(request_tmpdir, ignore_errors=True)
-    except:
-        pass
-    
-    logger.error("🚫 ALL DOWNLOAD STRATEGIES FAILED")
-    
-    if last_error:
-        error_str = str(last_error)
-        logger.error(f"Last download error: {error_str}")
+        # Validate request
+        if not request.is_json:
+            return jsonify({"error": "Content-Type debe ser application/json"}), 400
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "JSON inválido o vacío"}), 400
+            
+        video_url = data.get("url")
+        video_format = data.get("format")  # "mp3" or "mp4"
         
-        # Update yt-dlp as last resort
-        logger.info("🔄 Updating yt-dlp after download failures...")
-        update_yt_dlp()
-        
-        return jsonify({"error": "No se pudo descargar el video. Sistema actualizado automáticamente. Intenta con otro video o espera 15 minutos."}), 503
+        if not video_url:
+            return jsonify({"error": "No URL provided"}), 400
+            
+        if not video_format or video_format not in ["mp3", "mp4"]:
+            return jsonify({"error": "Formato debe ser 'mp3' o 'mp4'"}), 400
+            
+        # Clean URL
+        video_url = video_url.strip()
+        if not video_url:
+            return jsonify({"error": "URL vacía"}), 400
     
-    return jsonify({"error": "Error de descarga desconocido. Intenta con otro video."}), 503
+    except Exception as e:
+        logger.error(f"Error parsing convert request: {e}")
+        return jsonify({"error": "Error al procesar la solicitud"}), 400
+
+    try:
+        # Create the main temporary directory for this request
+        request_tmpdir = tempfile.mkdtemp()
+        
+        # Try multiple extraction strategies for downloads
+        strategies = get_extraction_strategies()
+        last_error = None
+        
+        for i, strategy in enumerate(strategies):
+            try:
+                strategy_name = strategy.get("name", f"Strategy {i+1}")
+                logger.info(f"🔄 Trying download {i+1}/5: {strategy_name}")
+                
+                # Configure yt-dlp options based on format and strategy
+                common_options = {
+                    "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
+                    "ffmpeg_location": FFMPEG_PATH,
+                    "no_warnings": True,
+                    **strategy.get("options", {})
+                }
+                
+                # Simple delay between attempts
+                if i > 0:
+                    delay = 5 + (i * 2)  # 5, 7, 9, 11, 13 seconds
+                    logger.info(f"⏳ Waiting {delay}s before download retry...")
+                    time.sleep(delay)
+                
+                if video_format == "mp4":
+                    options = {
+                        **common_options,
+                        "format": "best[height<=720]/best",
+                    }
+                else:  # mp3
+                    options = {
+                        **common_options,
+                        "format": "bestaudio/best",
+                        "postprocessors": [
+                            {
+                                "key": "FFmpegExtractAudio",
+                                "preferredcodec": "mp3",
+                                "preferredquality": "192",
+                            }
+                        ]
+                    }
+
+                logger.info(f"Created temporary directory: {request_tmpdir}")
+                
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    logger.info(f"⬇️ Starting download with {strategy_name}")
+                    
+                    # Extract info and download
+                    info = ydl.extract_info(video_url, download=True)
+                    
+                    if not info or not info.get("title"):
+                        raise Exception("Download failed - no video info")
+                    
+                    title = clean_filename(info["title"])
+                    ext = "mp4" if video_format == "mp4" else "mp3"
+                    
+                    # Find any file with the correct extension
+                    downloaded_file = None
+                    files = os.listdir(request_tmpdir)
+                    logger.info(f"📁 Files in directory: {files}")
+                    
+                    for file in files:
+                        if file.endswith(f".{ext}"):
+                            downloaded_file = os.path.join(request_tmpdir, file)
+                            logger.info(f"✅ Found downloaded file: {file}")
+                            break
+                    
+                    if not downloaded_file or not os.path.exists(downloaded_file):
+                        raise Exception(f"No {ext} file found after download")
+                        
+                    # Verify file has content
+                    file_size = os.path.getsize(downloaded_file)
+                    if file_size == 0:
+                        raise Exception("Downloaded file is empty")
+                    
+                    logger.info(f"📊 File size: {file_size} bytes")
+                    
+                    # Set correct mime type
+                    mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
+                    
+                    # Send the file to the client
+                    response = send_file(
+                        downloaded_file, 
+                        as_attachment=True, 
+                        download_name=f"{title}.{ext}",
+                        mimetype=mime_type
+                    )
+                    
+                    # Setup cleanup callback
+                    @response.call_on_close
+                    def cleanup():
+                        try:
+                            logger.info(f"🧹 Cleaning up: {request_tmpdir}")
+                            shutil.rmtree(request_tmpdir, ignore_errors=True)
+                        except:
+                            pass
+                    
+                    logger.info(f"🎉 DOWNLOAD SUCCESS with {strategy_name}: {title}.{ext}")
+                    return response
+                    
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                logger.error(f"❌ {strategy_name} failed: {error_msg}")
+                
+                # Clear partial files
+                try:
+                    for file in os.listdir(request_tmpdir):
+                        os.remove(os.path.join(request_tmpdir, file))
+                except:
+                    pass
+                
+                continue
+        
+        # All strategies failed - cleanup and return error
+        try:
+            shutil.rmtree(request_tmpdir, ignore_errors=True)
+        except:
+            pass
+        
+        logger.error("🚫 ALL DOWNLOAD STRATEGIES FAILED")
+        
+        if last_error:
+            error_str = str(last_error)
+            logger.error(f"Last download error: {error_str}")
+            
+            # Update yt-dlp as last resort
+            logger.info("🔄 Updating yt-dlp after download failures...")
+            update_yt_dlp()
+            
+            return jsonify({"error": "No se pudo descargar el video. Sistema actualizado automáticamente. Intenta con otro video o espera 15 minutos."}), 503
+        
+        return jsonify({"error": "Error de descarga desconocido. Intenta con otro video."}), 503
+        
+    except Exception as e:
+        logger.error(f"Critical error in convert: {str(e)}")
+        try:
+            shutil.rmtree(request_tmpdir, ignore_errors=True)
+        except:
+            pass
+        return jsonify({"error": "Error crítico del servidor. Intenta de nuevo."}), 500
 
 @app.route("/update_ytdlp", methods=["POST"])
 def update_ytdlp_route():
