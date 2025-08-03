@@ -231,14 +231,14 @@ def get_video_info():
         if not request.is_json:
             return jsonify({"error": "Content-Type debe ser application/json"}), 400
             
-    data = request.get_json()
+        data = request.get_json()
         if not data:
             return jsonify({"error": "JSON inválido o vacío"}), 400
             
-    video_url = data.get("url")
-    if not video_url:
-        return jsonify({"error": "No URL provided"}), 400
-    
+        video_url = data.get("url")
+        if not video_url:
+            return jsonify({"error": "No URL provided"}), 400
+        
         # Clean URL
         video_url = video_url.strip()
         if not video_url:
@@ -258,9 +258,9 @@ def get_video_info():
                 strategy_name = strategy.get("name", f"Strategy {i+1}")
                 logger.info(f"🔄 Trying info extraction {i+1}/5: {strategy_name}")
                 
-        options = {
-            "skip_download": True,
-            "quiet": True,
+                options = {
+                    "skip_download": True,
+                    "quiet": True,
                     "no_warnings": True,
                     **strategy.get("options", {})
                 }
@@ -271,19 +271,19 @@ def get_video_info():
                     logger.info(f"⏳ Waiting {delay}s...")
                     time.sleep(delay)
                 
-        with yt_dlp.YoutubeDL(options) as ydl:
+                with yt_dlp.YoutubeDL(options) as ydl:
                     logger.info(f"📊 Extracting video info using {strategy_name}")
-            info = ydl.extract_info(video_url, download=False)
-            
+                    info = ydl.extract_info(video_url, download=False)
+                    
                     if info and info.get("title"):
                         logger.info(f"🎉 INFO SUCCESS with {strategy_name}: {info.get('title')}")
-            return jsonify({
-                "title": info.get("title"),
-                "duration": info.get("duration"),
-                "thumbnail": info.get("thumbnail"),
-                "channel": info.get("uploader"),
-                "views": info.get("view_count")
-            })
+                        return jsonify({
+                            "title": info.get("title"),
+                            "duration": info.get("duration"),
+                            "thumbnail": info.get("thumbnail"),
+                            "channel": info.get("uploader"),
+                            "views": info.get("view_count")
+                        })
                     else:
                         raise Exception("No video information found")
                         
