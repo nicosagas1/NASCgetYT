@@ -236,12 +236,13 @@ def get_video_info():
     
     for i, strategy in enumerate(strategies):
         try:
-            logger.info(f"Trying extraction strategy {i+1}/5: {strategy['name']}")
+            strategy_name = strategy.get("name", f"Strategy {i+1}")
+            logger.info(f"Trying extraction strategy {i+1}/5: {strategy_name}")
             
             options = {
                 "skip_download": True,
                 "quiet": True,
-                **strategy["options"]
+                **strategy.get("options", {})
             }
             
             # Add small delay between attempts
@@ -251,7 +252,7 @@ def get_video_info():
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(video_url, download=False)
                 
-                logger.info(f"✅ Success with {strategy['name']}")
+                logger.info(f"✅ Success with {strategy_name}")
                 return jsonify({
                     "title": info.get("title"),
                     "duration": info.get("duration"),
@@ -262,7 +263,7 @@ def get_video_info():
                 
         except Exception as e:
             last_error = e
-            logger.warning(f"❌ {strategy['name']} failed: {str(e)}")
+            logger.warning(f"❌ {strategy_name} failed: {str(e)}")
             continue
     
     # All strategies failed
@@ -296,13 +297,14 @@ def convert():
     
     for i, strategy in enumerate(strategies):
         try:
-            logger.info(f"Trying download strategy {i+1}/5: {strategy['name']}")
+            strategy_name = strategy.get("name", f"Strategy {i+1}")
+            logger.info(f"Trying download strategy {i+1}/5: {strategy_name}")
             
             # Configure yt-dlp options based on format and strategy
             common_options = {
                 "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
                 "ffmpeg_location": FFMPEG_PATH,
-                **strategy["options"]
+                **strategy.get("options", {})
             }
             
             # Add delay between attempts
@@ -331,7 +333,7 @@ def convert():
             logger.info(f"Created temporary directory: {request_tmpdir}")
             
             with yt_dlp.YoutubeDL(options) as ydl:
-                logger.info(f"Downloading {video_url} as {video_format} using {strategy['name']}")
+                logger.info(f"Downloading {video_url} as {video_format} using {strategy_name}")
                 
                 # Extract info and download
                 info = ydl.extract_info(video_url, download=True)
@@ -391,12 +393,12 @@ def convert():
                     except Exception as e:
                         logger.error(f"Error cleaning up temporary directory: {str(e)}")
                 
-                logger.info(f"✅ Download successful with {strategy['name']}")
+                logger.info(f"✅ Download successful with {strategy_name}")
                 return response
                 
         except Exception as e:
             last_error = e
-            logger.warning(f"❌ Download strategy {strategy['name']} failed: {str(e)}")
+            logger.warning(f"❌ Download strategy {strategy_name} failed: {str(e)}")
             # Clear any partial downloads from this attempt
             try:
                 for file in os.listdir(request_tmpdir):
