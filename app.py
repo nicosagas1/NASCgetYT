@@ -209,7 +209,7 @@ def get_random_headers():
     }
 
 def get_extraction_strategies():
-    """Return cutting-edge extraction strategies for latest YouTube changes."""
+    """Return ultra-fast extraction strategies optimized for Render deployment."""
     base_headers = get_random_headers()
     
     return [
@@ -223,9 +223,9 @@ def get_extraction_strategies():
                         "skip": ["hls", "dash"]
                     }
                 },
-                "socket_timeout": 25,
-                "retries": 1,
-                "fragment_retries": 1
+                "socket_timeout": 15,
+                "retries": 0,  # No retries for speed
+                "fragment_retries": 0
             }
         },
         {
@@ -235,16 +235,16 @@ def get_extraction_strategies():
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["web_creator"],
-                        "skip": ["hls"]
+                        "skip": ["hls", "dash"]
                     }
                 },
-                "socket_timeout": 25,
-                "retries": 1,
-                "fragment_retries": 1
+                "socket_timeout": 15,
+                "retries": 0,
+                "fragment_retries": 0
             }
         },
         {
-            "name": "iOS Safari",
+            "name": "iOS Fast",
             "options": {
                 "http_headers": {
                     **base_headers,
@@ -253,39 +253,39 @@ def get_extraction_strategies():
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["ios"],
-                        "skip": ["dash"]
+                        "skip": ["hls", "dash"]
                     }
                 },
-                "socket_timeout": 25,
-                "retries": 1
+                "socket_timeout": 15,
+                "retries": 0
             }
         },
         {
-            "name": "Android Unplugged",
+            "name": "Android Simple",
             "options": {
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android_unplugged"],
-                        "skip": ["hls"]
+                        "player_client": ["android"],
+                        "skip": ["hls", "dash"]
                     }
                 },
-                "socket_timeout": 25,
-                "retries": 1
+                "socket_timeout": 15,
+                "retries": 0
             }
         },
         {
-            "name": "TV HTML5",
+            "name": "Web Embedded",
             "options": {
                 "http_headers": base_headers,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["tv_html5"],
-                        "skip": ["dash"]
+                        "player_client": ["web_embedded"],
+                        "skip": ["hls", "dash"]
                     }
                 },
-                "socket_timeout": 30,
-                "retries": 2
+                "socket_timeout": 20,
+                "retries": 0
             }
         }
     ]
@@ -299,23 +299,9 @@ def clean_filename(title):
     return title[:100] if len(title) > 100 else title
 
 def update_yt_dlp():
-    """Update yt-dlp to bleeding-edge version from GitHub master."""
-    try:
-        safe_log("Updating yt-dlp to bleeding-edge version...")
-        result = subprocess.run([
-            sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall",
-            "https://github.com/yt-dlp/yt-dlp/archive/master.zip"
-        ], capture_output=True, text=True, timeout=180)
-        
-        if result.returncode == 0:
-            safe_log("Successfully updated yt-dlp to bleeding-edge version")
-            return True
-        else:
-            safe_log(f"Failed to update yt-dlp: {result.stderr}", 'error')
-            return False
-    except Exception as e:
-        safe_log(f"Failed to update yt-dlp: {str(e)}", 'error')
-        return False
+    """Fast yt-dlp update - disabled to prevent timeouts."""
+    safe_log("yt-dlp update skipped to prevent timeouts")
+    return False
 
 def check_yt_dlp_version():
     """Check if yt-dlp is available and up to date."""
@@ -423,10 +409,7 @@ def get_video_info():
                     **strategy.get("options", {})
                 }
                 
-                if i > 0:
-                    delay = min(2 + i, 6)  # Max 6 seconds to avoid timeout
-                    safe_log(f"Waiting {delay}s...")
-                    time.sleep(delay)
+                # No delays - immediate retry for faster response
                 
                 with yt_dlp.YoutubeDL(options) as ydl:
                     safe_log(f"Extracting video info using {strategy_name}")
@@ -452,13 +435,8 @@ def get_video_info():
         
         safe_log("ALL INFO EXTRACTION FAILED", 'error')
         
-        error_msg = str(last_error) if last_error else "Unknown error"
-        if any(phrase in error_msg.lower() for phrase in ["sign in", "bot", "private", "unavailable"]):
-            safe_log("Attempting yt-dlp update as last resort...")
-            update_yt_dlp()
-            return jsonify({"error": "No se pudo obtener informacion del video. Sistema actualizado automaticamente. Intenta con otro video o espera 10 minutos."}), 503
-        
-        return jsonify({"error": "YouTube cambio su sistema. Intenta con otro video o espera unos minutos."}), 503
+        # Fast fail - no update attempts to avoid timeouts
+        return jsonify({"error": "Video no disponible temporalmente. Intenta con otro video."}), 503
         
     except Exception as e:
         safe_log(f"Critical error in get_video_info: {str(e)}", 'error')
@@ -503,10 +481,7 @@ def convert():
                 strategy_name = strategy.get("name", f"Strategy {i+1}")
                 safe_log(f"Trying download {i+1}/5: {strategy_name}")
                 
-                if i > 0:
-                    delay = min(3 + i, 8)  # Max 8 seconds to avoid Render timeout
-                    safe_log(f"Waiting {delay}s before download retry...")
-                    time.sleep(delay)
+                # No delays - immediate retry for faster downloads
                 
                 common_options = {
                     "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
@@ -574,13 +549,9 @@ def convert():
                 safe_log(f"{strategy_name} failed: {error_msg[:100]}", 'warning')
                 continue
         
-        error_msg = str(last_error) if last_error else "Unknown error"
-        
-        if any(phrase in error_msg.lower() for phrase in ["sign in", "bot", "private", "unavailable"]):
-            safe_log("ALL DOWNLOAD STRATEGIES FAILED - YouTube blocks", 'error')
-            return jsonify({"error": "YouTube bloqueo la descarga. Intenta con otro video."}), 503
-        
-        return jsonify({"error": "YouTube cambio su sistema. Intenta con otro video o espera unos minutos."}), 503
+        # Fast fail - no complex error analysis to avoid timeouts
+        safe_log("ALL DOWNLOAD STRATEGIES FAILED", 'error')
+        return jsonify({"error": "Descarga no disponible temporalmente. Intenta con otro video."}), 503
         
     except Exception as e:
         safe_log(f"Critical error in convert: {str(e)}", 'error')
