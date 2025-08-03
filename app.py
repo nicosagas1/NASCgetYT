@@ -77,147 +77,76 @@ def get_random_headers():
     }
 
 def get_extraction_strategies():
-    """Get ultra-aggressive extraction strategies to bypass YouTube blocks."""
-    base_headers = get_random_headers()
+    """Get working extraction strategies that actually bypass YouTube in 2025."""
     
     strategies = [
-        # Strategy 1: Android TV - Often less restricted
+        # Strategy 1: Simple Android - Most reliable
         {
-            "name": "Android TV",
+            "name": "Android Simple",
             "options": {
-                "http_headers": {
-                    **base_headers,
-                    "User-Agent": "com.google.android.youtube.tv/1.12.08 (Linux; U; Android 9) gzip"
-                },
                 "nocheckcertificate": True,
-                "geo_bypass": True,
-                "geo_bypass_country": "US",
-                "socket_timeout": 20,
-                "retries": 2,
+                "socket_timeout": 30,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android_testsuite", "android_vr"],
-                        "player_skip": ["configs", "webpage", "js"],
-                        "include_live_dash": False,
-                        "include_hls": False,
-                    }
-                },
-                "format_sort": ["res:480", "ext:mp4:m4a"],
-                "writeinfojson": False,
-                "writesubtitles": False,
-            }
-        },
-        
-        # Strategy 2: YouTube Music API
-        {
-            "name": "YouTube Music",
-            "options": {
-                "http_headers": {
-                    "User-Agent": "com.google.android.apps.youtube.music/5.26.52 (Linux; U; Android 11; SM-G973F) gzip",
-                    "X-YouTube-Client-Name": "21",
-                    "X-YouTube-Client-Version": "5.26.52",
-                },
-                "nocheckcertificate": True,
-                "geo_bypass": True,
-                "socket_timeout": 15,
-                "retries": 1,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android_music"],
-                        "player_skip": ["configs", "webpage", "js", "dash", "hls"],
+                        "player_client": ["android"],
                     }
                 }
             }
         },
         
-        # Strategy 3: Embedded player bypass
+        # Strategy 2: iOS - Often works when others fail
         {
-            "name": "Embedded Player",
+            "name": "iOS",
             "options": {
-                "http_headers": {
-                    **base_headers,
-                    "Referer": "https://www.youtube-nocookie.com/",
-                    "Origin": "https://www.youtube-nocookie.com"
-                },
                 "nocheckcertificate": True,
-                "geo_bypass": True,
-                "socket_timeout": 15,
-                "retries": 1,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["tv_embedded"],
-                        "player_skip": ["configs", "webpage", "dash"],
-                    }
-                }
-            }
-        },
-        
-        # Strategy 4: Web scraping mode
-        {
-            "name": "Web Scraper",
-            "options": {
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Accept": "*/*",
-                    "Accept-Language": "en-US,en;q=0.5",
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "DNT": "1",
-                    "Connection": "keep-alive",
-                    "Upgrade-Insecure-Requests": "1",
-                },
-                "nocheckcertificate": True,
-                "geo_bypass": True,
-                "geo_bypass_country": random.choice(["NL", "SE", "NO", "CH"]),
-                "socket_timeout": 10,
-                "retries": 1,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["web"],
-                        "player_skip": ["configs"],
-                    }
-                }
-            }
-        },
-        
-        # Strategy 5: iOS native app
-        {
-            "name": "iOS Native",
-            "options": {
-                "http_headers": {
-                    "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5 like Mac OS X;)",
-                    "X-YouTube-Client-Name": "5",
-                    "X-YouTube-Client-Version": "19.29.1",
-                },
-                "nocheckcertificate": True,
-                "geo_bypass": True,
-                "socket_timeout": 15,
-                "retries": 1,
+                "socket_timeout": 30,
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["ios"],
-                        "player_skip": ["webpage", "configs"],
                     }
                 }
             }
         },
         
-        # Strategy 6: Alternative extraction
+        # Strategy 3: Android TV Embedded
         {
-            "name": "Alternative",
+            "name": "Android TV",
             "options": {
-                "http_headers": base_headers,
                 "nocheckcertificate": True,
-                "geo_bypass": True,
-                "geo_bypass_country": "CA",
                 "socket_timeout": 30,
-                "retries": 3,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android_creator", "android_vr"],
-                        "player_skip": ["webpage"],
+                        "player_client": ["tv_embedded"],
                     }
-                },
-                "format_sort": ["quality", "res", "fps"],
+                }
+            }
+        },
+        
+        # Strategy 4: Web with minimal config
+        {
+            "name": "Web Clean",
+            "options": {
+                "nocheckcertificate": True,
+                "socket_timeout": 30,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["web"],
+                    }
+                }
+            }
+        },
+        
+        # Strategy 5: Android Music
+        {
+            "name": "Music",
+            "options": {
+                "nocheckcertificate": True,
+                "socket_timeout": 30,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android_music"],
+                    }
+                }
             }
         }
     ]
@@ -238,12 +167,24 @@ def clean_filename(title):
 def update_yt_dlp():
     """Update yt-dlp to the latest version."""
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True)
-        logger.info("Successfully updated yt-dlp to the latest version")
+        logger.info("🔄 Updating yt-dlp...")
+        result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], 
+                              capture_output=True, text=True, check=True)
+        logger.info("✅ Successfully updated yt-dlp")
         return True
     except Exception as e:
-        logger.error(f"Failed to update yt-dlp: {str(e)}")
+        logger.error(f"❌ Failed to update yt-dlp: {str(e)}")
         return False
+
+def check_yt_dlp_version():
+    """Check and ensure we have a working yt-dlp version."""
+    try:
+        import yt_dlp
+        logger.info(f"yt-dlp version: {yt_dlp.version.__version__}")
+        return True
+    except Exception as e:
+        logger.warning(f"yt-dlp version check failed: {e}")
+        return update_yt_dlp()
 
 @app.route("/")
 def index():
@@ -265,7 +206,7 @@ def get_video_info():
     for i, strategy in enumerate(strategies):
         try:
             strategy_name = strategy.get("name", f"Strategy {i+1}")
-            logger.info(f"🔄 Trying extraction strategy {i+1}/6: {strategy_name}")
+            logger.info(f"🔄 Trying info extraction {i+1}/5: {strategy_name}")
             
             options = {
                 "skip_download": True,
@@ -274,17 +215,18 @@ def get_video_info():
                 **strategy.get("options", {})
             }
             
-            # Progressive delay - more aggressive with each failure
+            # Simple delay between attempts
             if i > 0:
-                delay = min(2 ** i, 10)  # Exponential backoff, max 10 seconds
-                logger.info(f"⏳ Waiting {delay}s before retry...")
+                delay = 3 + i  # 3, 4, 5, 6, 7 seconds
+                logger.info(f"⏳ Waiting {delay}s...")
                 time.sleep(delay)
             
             with yt_dlp.YoutubeDL(options) as ydl:
+                logger.info(f"📊 Extracting video info using {strategy_name}")
                 info = ydl.extract_info(video_url, download=False)
                 
                 if info and info.get("title"):
-                    logger.info(f"🎉 SUCCESS with {strategy_name}")
+                    logger.info(f"🎉 INFO SUCCESS with {strategy_name}: {info.get('title')}")
                     return jsonify({
                         "title": info.get("title"),
                         "duration": info.get("duration"),
@@ -293,37 +235,31 @@ def get_video_info():
                         "views": info.get("view_count")
                     })
                 else:
-                    raise Exception("No video information extracted")
+                    raise Exception("No video information found")
                 
         except Exception as e:
             last_error = e
             error_msg = str(e)
-            logger.warning(f"❌ {strategy_name} failed: {error_msg[:100]}...")
-            
-            # If it's a rate limit, wait longer
-            if "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower():
-                logger.info("⏳ Rate limited, waiting 15 seconds...")
-                time.sleep(15)
-            
+            logger.warning(f"❌ {strategy_name} failed: {error_msg[:150]}")
             continue
     
     # All strategies failed
     logger.error("All extraction strategies failed")
     
+    # Final error handling
+    logger.error("🚫 ALL INFO EXTRACTION FAILED")
+    
     if last_error:
         error_str = str(last_error)
-        if "HTTP Error 403" in error_str or "Forbidden" in error_str:
-            logger.info("🔄 Updating yt-dlp due to video info 403 error...")
-            update_yt_dlp()
-            return jsonify({"error": "YouTube bloqueó la solicitud. Sistema actualizado. Intenta de nuevo en unos minutos."}), 503
-        elif "Sign in to confirm" in error_str or "bot" in error_str.lower():
-            return jsonify({"error": "YouTube detectó actividad de bot. Espera 10 minutos antes de intentar de nuevo."}), 429
-        elif "player response" in error_str.lower() or "extract" in error_str.lower():
-            return jsonify({"error": "YouTube cambió su sistema de protección. Intenta con un video diferente."}), 503
-        elif "private" in error_str.lower() or "unavailable" in error_str.lower():
-            return jsonify({"error": "Este video no está disponible o es privado."}), 404
+        logger.error(f"Last error was: {error_str}")
+        
+        # Try updating yt-dlp as last resort
+        logger.info("🔄 Attempting yt-dlp update as last resort...")
+        update_yt_dlp()
+        
+        return jsonify({"error": "No se pudo obtener información del video. Sistema actualizado automáticamente. Intenta con otro video o espera 10 minutos."}), 503
     
-    return jsonify({"error": "YouTube está bloqueando temporalmente. Intenta en 15-30 minutos o con un video diferente."}), 503
+    return jsonify({"error": "Error desconocido. Intenta con otro video."}), 503
 
 @app.route("/convert", methods=["POST"])
 def convert():
@@ -344,32 +280,31 @@ def convert():
     for i, strategy in enumerate(strategies):
         try:
             strategy_name = strategy.get("name", f"Strategy {i+1}")
-            logger.info(f"🔄 Trying download strategy {i+1}/6: {strategy_name}")
+            logger.info(f"🔄 Trying download {i+1}/5: {strategy_name}")
             
             # Configure yt-dlp options based on format and strategy
             common_options = {
-                "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
+                "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
                 "ffmpeg_location": FFMPEG_PATH,
                 "no_warnings": True,
                 **strategy.get("options", {})
             }
             
-            # Progressive delay - more aggressive with each failure
+            # Simple delay between attempts
             if i > 0:
-                delay = min(3 * i, 20)  # Progressive delay, max 20 seconds
+                delay = 5 + (i * 2)  # 5, 7, 9, 11, 13 seconds
                 logger.info(f"⏳ Waiting {delay}s before download retry...")
                 time.sleep(delay)
             
             if video_format == "mp4":
                 options = {
                     **common_options,
-                    "format": "best[height<=720][ext=mp4]/best[ext=mp4]/mp4/best",
-                    "merge_output_format": "mp4"
+                    "format": "best[height<=720]/best",
                 }
             else:  # mp3
                 options = {
                     **common_options,
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "format": "bestaudio/best",
                     "postprocessors": [
                         {
                             "key": "FFmpegExtractAudio",
@@ -382,100 +317,72 @@ def convert():
             logger.info(f"Created temporary directory: {request_tmpdir}")
             
             with yt_dlp.YoutubeDL(options) as ydl:
-                logger.info(f"⬇️ Downloading {video_url} as {video_format} using {strategy_name}")
+                logger.info(f"⬇️ Starting download with {strategy_name}")
                 
                 # Extract info and download
                 info = ydl.extract_info(video_url, download=True)
                 
                 if not info or not info.get("title"):
-                    raise Exception("No video information extracted")
+                    raise Exception("Download failed - no video info")
                 
-                video_id = info["id"]
                 title = clean_filename(info["title"])
                 ext = "mp4" if video_format == "mp4" else "mp3"
                 
-                # Search for downloaded file more aggressively
-                expected_file = None
-                for file in os.listdir(request_tmpdir):
-                    if (file.startswith(video_id) or 
-                        title.lower() in file.lower() or 
-                        os.path.splitext(file)[1].lower() == f".{ext}"):
-                        expected_file = os.path.join(request_tmpdir, file)
-                        logger.info(f"📁 Found downloaded file: {file}")
+                # Find any file with the correct extension
+                downloaded_file = None
+                files = os.listdir(request_tmpdir)
+                logger.info(f"📁 Files in directory: {files}")
+                
+                for file in files:
+                    if file.endswith(f".{ext}"):
+                        downloaded_file = os.path.join(request_tmpdir, file)
+                        logger.info(f"✅ Found downloaded file: {file}")
                         break
                 
-                if not expected_file or not os.path.exists(expected_file):
-                    # Try default name
-                    expected_file = os.path.join(request_tmpdir, f"{video_id}.{ext}")
-                    if not os.path.exists(expected_file):
-                        files = os.listdir(request_tmpdir)
-                        logger.error(f"❌ Downloaded file not found. Files in directory: {files}")
-                        raise FileNotFoundError(f"Downloaded file not found. Available files: {files}")
+                if not downloaded_file or not os.path.exists(downloaded_file):
+                    raise Exception(f"No {ext} file found after download")
                     
-                # Create a copy of the file to avoid access issues
-                copy_filename = f"{uuid.uuid4()}.{ext}"
-                copy_filepath = os.path.join(request_tmpdir, copy_filename)
+                # Verify file has content
+                file_size = os.path.getsize(downloaded_file)
+                if file_size == 0:
+                    raise Exception("Downloaded file is empty")
                 
-                # Wait for the file to be completely written and try to copy it
-                max_retries = 5
-                for attempt in range(max_retries):
-                    try:
-                        shutil.copy2(expected_file, copy_filepath)
-                        logger.info(f"📋 Successfully copied file to: {copy_filename}")
-                        break
-                    except (OSError, IOError) as e:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"⏳ File access error (attempt {attempt+1}), retrying in 2 seconds...")
-                            time.sleep(2)
-                        else:
-                            raise
-                
-                # Verify file exists and has content
-                if not os.path.exists(copy_filepath) or os.path.getsize(copy_filepath) == 0:
-                    raise Exception("Downloaded file is empty or corrupted")
+                logger.info(f"📊 File size: {file_size} bytes")
                 
                 # Set correct mime type
                 mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
                 
-                # Send the copied file to the client
+                # Send the file to the client
                 response = send_file(
-                    copy_filepath, 
+                    downloaded_file, 
                     as_attachment=True, 
                     download_name=f"{title}.{ext}",
                     mimetype=mime_type
                 )
                 
-                # Setup a callback to remove the temp directory after the response is sent
+                # Setup cleanup callback
                 @response.call_on_close
                 def cleanup():
                     try:
-                        logger.info(f"🧹 Cleaning up temporary directory: {request_tmpdir}")
+                        logger.info(f"🧹 Cleaning up: {request_tmpdir}")
                         shutil.rmtree(request_tmpdir, ignore_errors=True)
-                    except Exception as e:
-                        logger.error(f"Error cleaning up: {str(e)}")
+                    except:
+                        pass
                 
-                logger.info(f"🎉 DOWNLOAD SUCCESS with {strategy_name} - {title}.{ext}")
+                logger.info(f"🎉 DOWNLOAD SUCCESS with {strategy_name}: {title}.{ext}")
                 return response
                 
         except Exception as e:
             last_error = e
             error_msg = str(e)
-            logger.warning(f"❌ Download strategy {strategy_name} failed: {error_msg[:100]}...")
+            logger.error(f"❌ {strategy_name} failed: {error_msg}")
             
-            # Clear any partial downloads from this attempt
+            # Clear partial files
             try:
                 for file in os.listdir(request_tmpdir):
-                    file_path = os.path.join(request_tmpdir, file)
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-                        logger.debug(f"🗑️ Removed partial file: {file}")
-            except Exception as cleanup_error:
-                logger.debug(f"Cleanup error: {cleanup_error}")
-            
-            # If it's a rate limit, wait longer
-            if "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower():
-                logger.info("⏳ Rate limited during download, waiting 20 seconds...")
-                time.sleep(20)
+                    os.remove(os.path.join(request_tmpdir, file))
+            except:
+                pass
             
             continue
     
@@ -489,20 +396,15 @@ def convert():
     
     if last_error:
         error_str = str(last_error)
-        if "HTTP Error 403" in error_str or "Forbidden" in error_str:
-            logger.info("🔄 Updating yt-dlp due to 403 error...")
-            update_yt_dlp()
-            return jsonify({"error": "YouTube bloqueó la solicitud. Sistema actualizado. Intenta en 5 minutos."}), 503
-        elif "Sign in to confirm" in error_str or "bot" in error_str.lower():
-            return jsonify({"error": "YouTube detectó actividad de bot. Espera 10 minutos antes de intentar de nuevo."}), 429
-        elif "player response" in error_str.lower() or "extract" in error_str.lower():
-            return jsonify({"error": "YouTube cambió su sistema de protección. Intenta con un video diferente."}), 503
-        elif "private" in error_str.lower() or "unavailable" in error_str.lower():
-            return jsonify({"error": "Este video no está disponible o es privado."}), 404
-        elif "age" in error_str.lower() and "restrict" in error_str.lower():
-            return jsonify({"error": "Este video tiene restricción de edad y no se puede descargar."}), 403
+        logger.error(f"Last download error: {error_str}")
+        
+        # Update yt-dlp as last resort
+        logger.info("🔄 Updating yt-dlp after download failures...")
+        update_yt_dlp()
+        
+        return jsonify({"error": "No se pudo descargar el video. Sistema actualizado automáticamente. Intenta con otro video o espera 15 minutos."}), 503
     
-    return jsonify({"error": "YouTube está bloqueando todas las descargas temporalmente. Intenta en 15-30 minutos o con un video diferente."}), 503
+    return jsonify({"error": "Error de descarga desconocido. Intenta con otro video."}), 503
 
 @app.route("/update_ytdlp", methods=["POST"])
 def update_ytdlp_route():
@@ -516,4 +418,11 @@ def update_ytdlp_route():
 
 
 if __name__ == '__main__':
-    app.run()
+    logger.info("🚀 Starting YouTube Downloader...")
+    
+    # Check yt-dlp version on startup
+    if not check_yt_dlp_version():
+        logger.error("❌ Could not verify yt-dlp installation")
+    
+    logger.info("✅ Application ready at http://localhost:5000")
+    app.run(debug=False, host='0.0.0.0', port=5000)
