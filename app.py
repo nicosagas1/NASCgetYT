@@ -209,53 +209,53 @@ def get_random_headers():
     }
 
 def get_extraction_strategies():
-    """Return multiple extraction strategies for yt-dlp."""
+    """Return multiple extraction strategies optimized for 2025 YouTube changes."""
     base_headers = get_random_headers()
     
     return [
         {
-            "name": "Android Simple",
+            "name": "Android Testsuite",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["android"]}},
-                "socket_timeout": 30,
-                "retries": 2
+                "extractor_args": {"youtube": {"player_client": ["android_testsuite"]}},
+                "socket_timeout": 20,
+                "retries": 1
             }
         },
         {
-            "name": "iOS",
+            "name": "iOS Music",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["ios"]}},
-                "socket_timeout": 35,
-                "retries": 2
+                "extractor_args": {"youtube": {"player_client": ["ios_music"]}},
+                "socket_timeout": 20,
+                "retries": 1
             }
         },
         {
-            "name": "Android TV",
+            "name": "Android VR",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["android_tv"]}},
-                "socket_timeout": 40,
-                "retries": 3
+                "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
+                "socket_timeout": 20,
+                "retries": 1
             }
         },
         {
-            "name": "Web Clean",
+            "name": "Web Embedded",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["web"]}},
-                "socket_timeout": 45,
-                "retries": 3
+                "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
+                "socket_timeout": 20,
+                "retries": 1
             }
         },
         {
-            "name": "Music",
+            "name": "TV Embedded",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["android_music"]}},
-                "socket_timeout": 50,
-                "retries": 4
+                "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
+                "socket_timeout": 20,
+                "retries": 1
             }
         }
     ]
@@ -269,13 +269,16 @@ def clean_filename(title):
     return title[:100] if len(title) > 100 else title
 
 def update_yt_dlp():
-    """Update yt-dlp to latest version."""
+    """Update yt-dlp to latest version from GitHub."""
     try:
-        safe_log("Updating yt-dlp...")
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], 
-                              capture_output=True, text=True, timeout=60)
+        safe_log("Updating yt-dlp from GitHub...")
+        result = subprocess.run([
+            sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall",
+            "git+https://github.com/yt-dlp/yt-dlp.git"
+        ], capture_output=True, text=True, timeout=120)
+        
         if result.returncode == 0:
-            safe_log("Successfully updated yt-dlp")
+            safe_log("Successfully updated yt-dlp from GitHub")
             return True
         else:
             safe_log(f"Failed to update yt-dlp: {result.stderr}", 'error')
@@ -391,7 +394,7 @@ def get_video_info():
                 }
                 
                 if i > 0:
-                    delay = 3 + i
+                    delay = min(2 + i, 6)  # Max 6 seconds to avoid timeout
                     safe_log(f"Waiting {delay}s...")
                     time.sleep(delay)
                 
@@ -471,7 +474,7 @@ def convert():
                 safe_log(f"Trying download {i+1}/5: {strategy_name}")
                 
                 if i > 0:
-                    delay = 5 + (i * 2)
+                    delay = min(3 + i, 8)  # Max 8 seconds to avoid Render timeout
                     safe_log(f"Waiting {delay}s before download retry...")
                     time.sleep(delay)
                 
