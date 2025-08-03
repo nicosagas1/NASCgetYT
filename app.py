@@ -61,9 +61,9 @@ def get_random_headers():
     }
 
 def get_robust_options():
-    """Get robust download options that work without cookies."""
+    """Get robust download options that work with YouTube's latest changes."""
     return {
-        # Advanced anti-detection
+        # Advanced anti-detection with latest headers
         "http_headers": get_random_headers(),
         "nocheckcertificate": True,
         "geo_bypass": True,
@@ -73,18 +73,34 @@ def get_robust_options():
         
         # Network settings for stability
         "socket_timeout": 60,
-        "retries": 15,
-        "fragment_retries": 15,
-        "retry_sleep": 2,
+        "retries": 20,
+        "fragment_retries": 20,
+        "retry_sleep_functions": ["exp", "linear"],
+        
+        # YouTube-specific fixes for 2025
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],  # Try multiple clients
+                "player_skip": ["configs"],  # Skip problematic configs
+                "comment_sort": ["top"],  # Avoid comment issues
+            }
+        },
         
         # Additional anti-bot measures
-        "sleep_interval": 1,
-        "max_sleep_interval": 5,
-        "extractor_retries": 5,
+        "sleep_interval": 2,
+        "max_sleep_interval": 8,
+        "extractor_retries": 10,
         
         # Format selection for compatibility
         "prefer_free_formats": True,
         "youtube_include_dash_manifest": False,
+        "format_sort": ["quality", "res", "fps", "hdr:12", "codec:vp9.2"],
+        
+        # Player response fixes
+        "writeinfojson": False,
+        "writethumbnail": False,
+        "writesubtitles": False,
+        "writeautomaticsub": False,
     }
 
 
@@ -137,13 +153,42 @@ def get_video_info():
     
     except Exception as e:
         logger.error(f"Error fetching video info: {str(e)}")
-        if "HTTP Error 403: Forbidden" in str(e):
-            # Try to update yt-dlp on 403 errors
+        error_str = str(e)
+        
+        if "Failed to extract any player response" in error_str:
+            logger.info("Trying alternative extraction method...")
+            # Try with mobile client as fallback
+            try:
+                fallback_options = {
+                    "skip_download": True,
+                    "quiet": True,
+                    **get_robust_options(),
+                    "extractor_args": {
+                        "youtube": {
+                            "player_client": ["android_music", "android_creator", "android"],
+                            "player_skip": ["configs", "webpage"]
+                        }
+                    }
+                }
+                
+                with yt_dlp.YoutubeDL(fallback_options) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                    return jsonify({
+                        "title": info.get("title"),
+                        "duration": info.get("duration"),
+                        "thumbnail": info.get("thumbnail"),
+                        "channel": info.get("uploader"),
+                        "views": info.get("view_count")
+                    })
+            except:
+                return jsonify({"error": "YouTube cambió su sistema. Intenta con otro video o espera unos minutos."}), 503
+                
+        elif "HTTP Error 403: Forbidden" in error_str:
             if update_yt_dlp():
-                return jsonify({"error": "YouTube blocked the request. We've updated our tools, please try again."}), 503
-        elif "Sign in to confirm you're not a bot" in str(e):
+                return jsonify({"error": "Sistema actualizado. Intenta de nuevo."}), 503
+        elif "Sign in to confirm you're not a bot" in error_str:
             return jsonify({"error": "YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos."}), 429
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Error: {str(e)}"}), 500
 
 @app.route("/convert", methods=["POST"])
 def convert():
@@ -251,10 +296,86 @@ def convert():
                 return response
         except yt_dlp.utils.DownloadError as e:
             error_str = str(e)
-            if "HTTP Error 403: Forbidden" in error_str:
-                # Try updating yt-dlp
+            
+            if "Failed to extract any player response" in error_str:
+                logger.info("Player response failed, trying mobile client...")
+                # Retry with mobile client
+                try:
+                    fallback_common_options = {
+                        **common_options,
+                        "extractor_args": {
+                            "youtube": {
+                                "player_client": ["android_music", "android_creator", "android"],
+                                "player_skip": ["configs", "webpage"]
+                            }
+                        }
+                    }
+                    
+                    if video_format == "mp4":
+                        fallback_options = {
+                            **fallback_common_options,
+                            "format": "best[ext=mp4]/best"
+                        }
+                    else:  # mp3
+                        fallback_options = {
+                            **fallback_common_options,
+                            "format": "bestaudio/best",
+                            "postprocessors": [
+                                {
+                                    "key": "FFmpegExtractAudio",
+                                    "preferredcodec": "mp3",
+                                    "preferredquality": "192",
+                                }
+                            ]
+                        }
+                    
+                    with yt_dlp.YoutubeDL(fallback_options) as ydl:
+                        info = ydl.extract_info(video_url, download=True)
+                        video_id = info["id"]
+                        title = clean_filename(info["title"])
+                        ext = "mp4" if video_format == "mp4" else "mp3"
+                        
+                        # Continue with file handling...
+                        expected_file = os.path.join(request_tmpdir, f"{video_id}.{ext}")
+                        
+                        if not os.path.exists(expected_file):
+                            for file in os.listdir(request_tmpdir):
+                                if file.startswith(video_id) or os.path.splitext(file)[1].lower() == f".{ext}":
+                                    expected_file = os.path.join(request_tmpdir, file)
+                                    break
+                        
+                        if not os.path.exists(expected_file):
+                            raise FileNotFoundError("Downloaded file not found")
+                            
+                        copy_filename = f"{uuid.uuid4()}.{ext}"
+                        copy_filepath = os.path.join(request_tmpdir, copy_filename)
+                        shutil.copy2(expected_file, copy_filepath)
+                        
+                        mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
+                        
+                        response = send_file(
+                            copy_filepath, 
+                            as_attachment=True, 
+                            download_name=f"{title}.{ext}",
+                            mimetype=mime_type
+                        )
+                        
+                        @response.call_on_close
+                        def cleanup():
+                            try:
+                                shutil.rmtree(request_tmpdir, ignore_errors=True)
+                            except:
+                                pass
+                        
+                        return response
+                        
+                except Exception as retry_error:
+                    logger.error(f"Fallback also failed: {str(retry_error)}")
+                    raise Exception("YouTube cambió su sistema. Intenta con otro video o espera unos minutos.")
+                    
+            elif "HTTP Error 403: Forbidden" in error_str:
                 update_yt_dlp()
-                raise Exception("YouTube blocked the request. Our system has been updated - please try again.")
+                raise Exception("Sistema actualizado. Intenta de nuevo.")
             elif "Sign in to confirm you're not a bot" in error_str:
                 raise Exception("YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos.")
             elif "could not copy" in error_str.lower() and "cookie database" in error_str.lower():
