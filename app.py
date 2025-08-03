@@ -11,6 +11,7 @@ Funciona con:
 """
 
 from flask import Flask, request, send_file, jsonify, render_template
+from werkzeug.exceptions import HTTPException
 import yt_dlp
 import os
 import re
@@ -28,7 +29,23 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = '7772428b-01cf-4d05-9c3e-cea510398586'
 
+# Configure Flask to not show HTML error pages
+app.config['TRAP_HTTP_EXCEPTIONS'] = True
+app.config['PROPAGATE_EXCEPTIONS'] = True
+
 # Global error handlers to ensure JSON responses
+@app.errorhandler(400)
+def bad_request_error(error):
+    return jsonify({"error": "Solicitud inválida"}), 400
+
+@app.errorhandler(401)
+def unauthorized_error(error):
+    return jsonify({"error": "No autorizado"}), 401
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    return jsonify({"error": "Prohibido"}), 403
+
 @app.errorhandler(404)
 def not_found_error(error):
     return jsonify({"error": "Endpoint no encontrado"}), 404
@@ -37,10 +54,31 @@ def not_found_error(error):
 def method_not_allowed_error(error):
     return jsonify({"error": "Método no permitido"}), 405
 
+@app.errorhandler(429)
+def rate_limit_error(error):
+    return jsonify({"error": "Demasiadas solicitudes"}), 429
+
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
     return jsonify({"error": "Error interno del servidor. Intenta de nuevo."}), 500
+
+@app.errorhandler(502)
+def bad_gateway_error(error):
+    return jsonify({"error": "Error de gateway"}), 502
+
+@app.errorhandler(503)
+def service_unavailable_error(error):
+    return jsonify({"error": "Servicio no disponible"}), 503
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    """Handle all HTTP exceptions and return JSON."""
+    logger.error(f"HTTP exception: {e.code} - {e.description}")
+    return jsonify({
+        "error": e.description or f"Error HTTP {e.code}",
+        "code": e.code
+    }), e.code
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -56,9 +94,45 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    """Ensure JSON responses have correct headers."""
-    if response.mimetype == 'application/json':
+    """Force JSON responses for API endpoints and errors."""
+    try:
+        # API endpoints should ALWAYS return JSON
+        if request.endpoint in ['get_video_info', 'convert', 'update_ytdlp_route', 'handle_options']:
+            if response.mimetype != 'application/json':
+                # Force convert to JSON
+                error_msg = "Error de servidor"
+                if response.status_code == 404:
+                    error_msg = "Endpoint no encontrado"
+                elif response.status_code == 405:
+                    error_msg = "Método no permitido"
+                elif response.status_code >= 500:
+                    error_msg = "Error interno del servidor"
+                
+                response.data = json.dumps({"error": error_msg}).encode('utf-8')
+                response.mimetype = 'application/json'
+                
+        # Any error response should be JSON
+        elif response.status_code >= 400:
+            if response.mimetype != 'application/json':
+                response.data = json.dumps({"error": "Error del servidor"}).encode('utf-8')
+                response.mimetype = 'application/json'
+    
+        # Set JSON headers
+        if response.mimetype == 'application/json':
+            response.headers['Content-Type'] = 'application/json; charset=utf-8'
+        
+        # CORS headers for all responses
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        
+    except Exception as e:
+        # If anything fails, return safe JSON error
+        logger.error(f"Error in after_request: {e}")
+        response.data = json.dumps({"error": "Error de procesamiento"}).encode('utf-8')
+        response.mimetype = 'application/json'
         response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    
     return response
 
 # Configure logging with better format
@@ -222,6 +296,13 @@ def check_yt_dlp_version():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/get_video_info", methods=["OPTIONS"])
+@app.route("/convert", methods=["OPTIONS"])
+@app.route("/update_ytdlp", methods=["OPTIONS"])
+def handle_options():
+    """Handle preflight OPTIONS requests."""
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/get_video_info", methods=["POST"])
 def get_video_info():
