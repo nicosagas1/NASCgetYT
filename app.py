@@ -209,7 +209,7 @@ def get_random_headers():
     }
 
 def get_extraction_strategies():
-    """Return multiple extraction strategies optimized for 2025 YouTube changes."""
+    """Return cutting-edge extraction strategies for latest YouTube changes."""
     base_headers = get_random_headers()
     
     return [
@@ -217,45 +217,75 @@ def get_extraction_strategies():
             "name": "Android Testsuite",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["android_testsuite"]}},
-                "socket_timeout": 20,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android_testsuite"],
+                        "skip": ["hls", "dash"]
+                    }
+                },
+                "socket_timeout": 25,
+                "retries": 1,
+                "fragment_retries": 1
+            }
+        },
+        {
+            "name": "Web Creator",
+            "options": {
+                "http_headers": base_headers,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["web_creator"],
+                        "skip": ["hls"]
+                    }
+                },
+                "socket_timeout": 25,
+                "retries": 1,
+                "fragment_retries": 1
+            }
+        },
+        {
+            "name": "iOS Safari",
+            "options": {
+                "http_headers": {
+                    **base_headers,
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                },
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["ios"],
+                        "skip": ["dash"]
+                    }
+                },
+                "socket_timeout": 25,
                 "retries": 1
             }
         },
         {
-            "name": "iOS Music",
+            "name": "Android Unplugged",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["ios_music"]}},
-                "socket_timeout": 20,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android_unplugged"],
+                        "skip": ["hls"]
+                    }
+                },
+                "socket_timeout": 25,
                 "retries": 1
             }
         },
         {
-            "name": "Android VR",
+            "name": "TV HTML5",
             "options": {
                 "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
-                "socket_timeout": 20,
-                "retries": 1
-            }
-        },
-        {
-            "name": "Web Embedded",
-            "options": {
-                "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
-                "socket_timeout": 20,
-                "retries": 1
-            }
-        },
-        {
-            "name": "TV Embedded",
-            "options": {
-                "http_headers": base_headers,
-                "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
-                "socket_timeout": 20,
-                "retries": 1
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["tv_html5"],
+                        "skip": ["dash"]
+                    }
+                },
+                "socket_timeout": 30,
+                "retries": 2
             }
         }
     ]
@@ -269,16 +299,16 @@ def clean_filename(title):
     return title[:100] if len(title) > 100 else title
 
 def update_yt_dlp():
-    """Update yt-dlp to latest version from GitHub."""
+    """Update yt-dlp to bleeding-edge version from GitHub master."""
     try:
-        safe_log("Updating yt-dlp from GitHub...")
+        safe_log("Updating yt-dlp to bleeding-edge version...")
         result = subprocess.run([
             sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall",
-            "git+https://github.com/yt-dlp/yt-dlp.git"
-        ], capture_output=True, text=True, timeout=120)
+            "https://github.com/yt-dlp/yt-dlp/archive/master.zip"
+        ], capture_output=True, text=True, timeout=180)
         
         if result.returncode == 0:
-            safe_log("Successfully updated yt-dlp from GitHub")
+            safe_log("Successfully updated yt-dlp to bleeding-edge version")
             return True
         else:
             safe_log(f"Failed to update yt-dlp: {result.stderr}", 'error')
