@@ -1,3 +1,15 @@
+"""
+YouTube Downloader - Versión Simplificada
+
+Descarga videos de YouTube como MP3 o MP4 directamente a tu navegador.
+Sin necesidad de cookies o configuración complicada.
+
+Funciona con:
+- Videos públicos de YouTube
+- Descargas directas al navegador
+- Reconexión automática si hay errores temporales
+"""
+
 from flask import Flask, request, send_file, jsonify, render_template
 import yt_dlp
 import os
@@ -12,8 +24,6 @@ import subprocess
 import sys
 import json
 from datetime import datetime
-from proxy_handler import ProxyHandler
-from throttle_handler import ThrottleHandler
 
 app = Flask(__name__)
 app.secret_key = '7772428b-01cf-4d05-9c3e-cea510398586'
@@ -50,6 +60,35 @@ def get_random_headers():
         "Cache-Control": "max-age=0"
     }
 
+def get_robust_options():
+    """Get robust download options that work without cookies."""
+    return {
+        # Advanced anti-detection
+        "http_headers": get_random_headers(),
+        "nocheckcertificate": True,
+        "geo_bypass": True,
+        "geo_bypass_country": "US",
+        "extract_flat": False,
+        "ignoreerrors": False,
+        
+        # Network settings for stability
+        "socket_timeout": 60,
+        "retries": 15,
+        "fragment_retries": 15,
+        "retry_sleep": 2,
+        
+        # Additional anti-bot measures
+        "sleep_interval": 1,
+        "max_sleep_interval": 5,
+        "extractor_retries": 5,
+        
+        # Format selection for compatibility
+        "prefer_free_formats": True,
+        "youtube_include_dash_manifest": False,
+    }
+
+
+
 def clean_filename(title):
     """Removes special characters and shortens the filename."""
     title = re.sub(r'[\\/*?:"<>|]', '', title)
@@ -82,10 +121,7 @@ def get_video_info():
         options = {
             "skip_download": True,
             "quiet": True,
-            "headers": get_random_headers(),
-            "nocheckcertificate": True,
-            "geo_bypass": True,
-            "geo_bypass_country": "US"
+            **get_robust_options()  # Use robust options instead of cookies
         }
         
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -105,6 +141,8 @@ def get_video_info():
             # Try to update yt-dlp on 403 errors
             if update_yt_dlp():
                 return jsonify({"error": "YouTube blocked the request. We've updated our tools, please try again."}), 503
+        elif "Sign in to confirm you're not a bot" in str(e):
+            return jsonify({"error": "YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos."}), 429
         return jsonify({"error": str(e)}), 500
 
 @app.route("/convert", methods=["POST"])
@@ -124,14 +162,7 @@ def convert():
         common_options = {
             "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
             "ffmpeg_location": FFMPEG_PATH,
-            "headers": get_random_headers(),
-            "nocheckcertificate": True,
-            "geo_bypass": True,
-            "geo_bypass_country": "US", 
-            "cookiefile": os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt"),
-            "socket_timeout": 30,
-            "retries": 10,
-            "fragment_retries": 10
+            **get_robust_options()  # Use robust options for reliable downloads
         }
         
         if video_format == "mp4":
@@ -219,10 +250,15 @@ def convert():
                 
                 return response
         except yt_dlp.utils.DownloadError as e:
-            if "HTTP Error 403: Forbidden" in str(e):
+            error_str = str(e)
+            if "HTTP Error 403: Forbidden" in error_str:
                 # Try updating yt-dlp
                 update_yt_dlp()
                 raise Exception("YouTube blocked the request. Our system has been updated - please try again.")
+            elif "Sign in to confirm you're not a bot" in error_str:
+                raise Exception("YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos.")
+            elif "could not copy" in error_str.lower() and "cookie database" in error_str.lower():
+                raise Exception("Error temporal. Intenta de nuevo en unos segundos.")
             raise
 
     except Exception as e:
@@ -243,6 +279,8 @@ def update_ytdlp_route():
         return jsonify({"message": "yt-dlp updated successfully"}), 200
     else:
         return jsonify({"error": "Failed to update yt-dlp"}), 500
+
+
 
 if __name__ == '__main__':
     app.run()
