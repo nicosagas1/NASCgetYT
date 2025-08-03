@@ -35,13 +35,25 @@ logger = logging.getLogger(__name__)
 # Set FFmpeg path - adjust this to your specific location if needed
 FFMPEG_PATH = r"C:\\ffmpeg\\bin"
 
-# List of potential user agents to rotate
+# Updated user agents for 2025 - more diverse and recent
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+    # Chrome variants
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    
+    # Firefox variants
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    
+    # Edge variants
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+    
+    # Mobile variants
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Android 14; Mobile; rv:133.0) Gecko/133.0 Firefox/133.0",
+    "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 ]
 
 def get_random_headers():
@@ -60,48 +72,133 @@ def get_random_headers():
         "Cache-Control": "max-age=0"
     }
 
-def get_robust_options():
-    """Get robust download options that work with YouTube's latest changes."""
-    return {
-        # Advanced anti-detection with latest headers
-        "http_headers": get_random_headers(),
-        "nocheckcertificate": True,
-        "geo_bypass": True,
-        "geo_bypass_country": "US",
-        "extract_flat": False,
-        "ignoreerrors": False,
-        
-        # Network settings for stability
-        "socket_timeout": 60,
-        "retries": 20,
-        "fragment_retries": 20,
-        "retry_sleep_functions": ["exp", "linear"],
-        
-        # YouTube-specific fixes for 2025
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "web"],  # Try multiple clients
-                "player_skip": ["configs"],  # Skip problematic configs
-                "comment_sort": ["top"],  # Avoid comment issues
+def get_extraction_strategies():
+    """Get multiple extraction strategies to try sequentially."""
+    base_headers = get_random_headers()
+    
+    strategies = [
+        # Strategy 1: Standard Android client
+        {
+            "name": "Android Client",
+            "options": {
+                "http_headers": base_headers,
+                "nocheckcertificate": True,
+                "geo_bypass": True,
+                "geo_bypass_country": "US",
+                "socket_timeout": 30,
+                "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android"],
+                        "player_skip": ["configs", "webpage"],
+                    }
+                }
             }
         },
         
-        # Additional anti-bot measures
-        "sleep_interval": 2,
-        "max_sleep_interval": 8,
-        "extractor_retries": 10,
+        # Strategy 2: iOS client with mobile headers
+        {
+            "name": "iOS Client", 
+            "options": {
+                "http_headers": {
+                    **base_headers,
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
+                },
+                "nocheckcertificate": True,
+                "geo_bypass": True,
+                "socket_timeout": 30,
+                "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["ios"],
+                    }
+                }
+            }
+        },
         
-        # Format selection for compatibility
-        "prefer_free_formats": True,
-        "youtube_include_dash_manifest": False,
-        "format_sort": ["quality", "res", "fps", "hdr:12", "codec:vp9.2"],
+        # Strategy 3: Web client with TV user agent
+        {
+            "name": "TV Client",
+            "options": {
+                "http_headers": {
+                    **base_headers,
+                    "User-Agent": "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1"
+                },
+                "nocheckcertificate": True,
+                "geo_bypass": True,
+                "socket_timeout": 30,
+                "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["tv_embedded"],
+                        "player_skip": ["configs"],
+                    }
+                }
+            }
+        },
         
-        # Player response fixes
-        "writeinfojson": False,
-        "writethumbnail": False,
-        "writesubtitles": False,
-        "writeautomaticsub": False,
-    }
+        # Strategy 4: Android Music with different approach
+        {
+            "name": "Android Music",
+            "options": {
+                "http_headers": {
+                    **base_headers,
+                    "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+                },
+                "nocheckcertificate": True,
+                "geo_bypass": True,
+                "socket_timeout": 45,
+                "retries": 5,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android_music", "android_creator"],
+                        "player_skip": ["webpage"],
+                    }
+                }
+            }
+        },
+        
+        # Strategy 5: Web with aggressive anti-detection
+        {
+            "name": "Web Stealth",
+            "options": {
+                "http_headers": {
+                    **base_headers,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="131", "Google Chrome";v="131"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"',
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Upgrade-Insecure-Requests": "1"
+                },
+                "nocheckcertificate": True,
+                "geo_bypass": True,
+                "geo_bypass_country": random.choice(["US", "CA", "GB", "DE", "FR"]),
+                "socket_timeout": 60,
+                "retries": 10,
+                "sleep_interval": 2,
+                "max_sleep_interval": 5,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["web", "android"],
+                        "player_skip": ["configs"],
+                    }
+                }
+            }
+        }
+    ]
+    
+    return strategies
+
+def get_robust_options():
+    """Get the most robust options as fallback."""
+    return get_extraction_strategies()[0]["options"]
 
 
 
@@ -133,62 +230,53 @@ def get_video_info():
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
     
-    try:
-        options = {
-            "skip_download": True,
-            "quiet": True,
-            **get_robust_options()  # Use robust options instead of cookies
-        }
-        
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            
-            return jsonify({
-                "title": info.get("title"),
-                "duration": info.get("duration"),
-                "thumbnail": info.get("thumbnail"),
-                "channel": info.get("uploader"),
-                "views": info.get("view_count")
-            })
+    # Try multiple extraction strategies
+    strategies = get_extraction_strategies()
+    last_error = None
     
-    except Exception as e:
-        logger.error(f"Error fetching video info: {str(e)}")
-        error_str = str(e)
-        
-        if "Failed to extract any player response" in error_str:
-            logger.info("Trying alternative extraction method...")
-            # Try with mobile client as fallback
-            try:
-                fallback_options = {
-                    "skip_download": True,
-                    "quiet": True,
-                    **get_robust_options(),
-                    "extractor_args": {
-                        "youtube": {
-                            "player_client": ["android_music", "android_creator", "android"],
-                            "player_skip": ["configs", "webpage"]
-                        }
-                    }
-                }
+    for i, strategy in enumerate(strategies):
+        try:
+            logger.info(f"Trying extraction strategy {i+1}/5: {strategy['name']}")
+            
+            options = {
+                "skip_download": True,
+                "quiet": True,
+                **strategy["options"]
+            }
+            
+            # Add small delay between attempts
+            if i > 0:
+                time.sleep(random.uniform(1, 3))
+            
+            with yt_dlp.YoutubeDL(options) as ydl:
+                info = ydl.extract_info(video_url, download=False)
                 
-                with yt_dlp.YoutubeDL(fallback_options) as ydl:
-                    info = ydl.extract_info(video_url, download=False)
-                    return jsonify({
-                        "title": info.get("title"),
-                        "duration": info.get("duration"),
-                        "thumbnail": info.get("thumbnail"),
-                        "channel": info.get("uploader"),
-                        "views": info.get("view_count")
-                    })
-            except:
-                return jsonify({"error": "YouTube cambió su sistema. Intenta con otro video o espera unos minutos."}), 503
+                logger.info(f"✅ Success with {strategy['name']}")
+                return jsonify({
+                    "title": info.get("title"),
+                    "duration": info.get("duration"),
+                    "thumbnail": info.get("thumbnail"),
+                    "channel": info.get("uploader"),
+                    "views": info.get("view_count")
+                })
                 
-        elif "HTTP Error 403: Forbidden" in error_str:
+        except Exception as e:
+            last_error = e
+            logger.warning(f"❌ {strategy['name']} failed: {str(e)}")
+            continue
+    
+    # All strategies failed
+    logger.error("All extraction strategies failed")
+    
+    if last_error:
+        error_str = str(last_error)
+        if "HTTP Error 403: Forbidden" in error_str:
             if update_yt_dlp():
                 return jsonify({"error": "Sistema actualizado. Intenta de nuevo."}), 503
         elif "Sign in to confirm you're not a bot" in error_str:
             return jsonify({"error": "YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos."}), 429
-        return jsonify({"error": f"Error: {str(e)}"}), 500
+    
+    return jsonify({"error": "No se pudo extraer información del video. YouTube puede estar bloqueando las solicitudes temporalmente."}), 503
 
 @app.route("/convert", methods=["POST"])
 def convert():
@@ -202,38 +290,48 @@ def convert():
     # Create the main temporary directory for this request
     request_tmpdir = tempfile.mkdtemp()
     
-    try:
-        # Configure yt-dlp options based on format
-        common_options = {
-            "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
-            "ffmpeg_location": FFMPEG_PATH,
-            **get_robust_options()  # Use robust options for reliable downloads
-        }
-        
-        if video_format == "mp4":
-            options = {
-                **common_options,
-                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
-            }
-        else:  # mp3
-            options = {
-                **common_options,
-                "format": "bestaudio/best",
-                "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
-                "postprocessors": [
-                    {
-                        "key": "FFmpegExtractAudio",
-                        "preferredcodec": "mp3",
-                        "preferredquality": "192",
-                    }
-                ]
-            }
-
-        logger.info(f"Created temporary directory: {request_tmpdir}")
-        
+    # Try multiple extraction strategies for downloads
+    strategies = get_extraction_strategies()
+    last_error = None
+    
+    for i, strategy in enumerate(strategies):
         try:
+            logger.info(f"Trying download strategy {i+1}/5: {strategy['name']}")
+            
+            # Configure yt-dlp options based on format and strategy
+            common_options = {
+                "outtmpl": os.path.join(request_tmpdir, "%(id)s.%(ext)s"),
+                "ffmpeg_location": FFMPEG_PATH,
+                **strategy["options"]
+            }
+            
+            # Add delay between attempts
+            if i > 0:
+                time.sleep(random.uniform(2, 5))
+                logger.info(f"Waiting before retry...")
+            
+            if video_format == "mp4":
+                options = {
+                    **common_options,
+                    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/mp4"
+                }
+            else:  # mp3
+                options = {
+                    **common_options,
+                    "format": "bestaudio/best",
+                    "postprocessors": [
+                        {
+                            "key": "FFmpegExtractAudio",
+                            "preferredcodec": "mp3",
+                            "preferredquality": "192",
+                        }
+                    ]
+                }
+
+            logger.info(f"Created temporary directory: {request_tmpdir}")
+            
             with yt_dlp.YoutubeDL(options) as ydl:
-                logger.info(f"Downloading {video_url} as {video_format}")
+                logger.info(f"Downloading {video_url} as {video_format} using {strategy['name']}")
                 
                 # Extract info and download
                 info = ydl.extract_info(video_url, download=True)
@@ -293,104 +391,39 @@ def convert():
                     except Exception as e:
                         logger.error(f"Error cleaning up temporary directory: {str(e)}")
                 
+                logger.info(f"✅ Download successful with {strategy['name']}")
                 return response
-        except yt_dlp.utils.DownloadError as e:
-            error_str = str(e)
-            
-            if "Failed to extract any player response" in error_str:
-                logger.info("Player response failed, trying mobile client...")
-                # Retry with mobile client
-                try:
-                    fallback_common_options = {
-                        **common_options,
-                        "extractor_args": {
-                            "youtube": {
-                                "player_client": ["android_music", "android_creator", "android"],
-                                "player_skip": ["configs", "webpage"]
-                            }
-                        }
-                    }
-                    
-                    if video_format == "mp4":
-                        fallback_options = {
-                            **fallback_common_options,
-                            "format": "best[ext=mp4]/best"
-                        }
-                    else:  # mp3
-                        fallback_options = {
-                            **fallback_common_options,
-                            "format": "bestaudio/best",
-                            "postprocessors": [
-                                {
-                                    "key": "FFmpegExtractAudio",
-                                    "preferredcodec": "mp3",
-                                    "preferredquality": "192",
-                                }
-                            ]
-                        }
-                    
-                    with yt_dlp.YoutubeDL(fallback_options) as ydl:
-                        info = ydl.extract_info(video_url, download=True)
-                        video_id = info["id"]
-                        title = clean_filename(info["title"])
-                        ext = "mp4" if video_format == "mp4" else "mp3"
-                        
-                        # Continue with file handling...
-                        expected_file = os.path.join(request_tmpdir, f"{video_id}.{ext}")
-                        
-                        if not os.path.exists(expected_file):
-                            for file in os.listdir(request_tmpdir):
-                                if file.startswith(video_id) or os.path.splitext(file)[1].lower() == f".{ext}":
-                                    expected_file = os.path.join(request_tmpdir, file)
-                                    break
-                        
-                        if not os.path.exists(expected_file):
-                            raise FileNotFoundError("Downloaded file not found")
-                            
-                        copy_filename = f"{uuid.uuid4()}.{ext}"
-                        copy_filepath = os.path.join(request_tmpdir, copy_filename)
-                        shutil.copy2(expected_file, copy_filepath)
-                        
-                        mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
-                        
-                        response = send_file(
-                            copy_filepath, 
-                            as_attachment=True, 
-                            download_name=f"{title}.{ext}",
-                            mimetype=mime_type
-                        )
-                        
-                        @response.call_on_close
-                        def cleanup():
-                            try:
-                                shutil.rmtree(request_tmpdir, ignore_errors=True)
-                            except:
-                                pass
-                        
-                        return response
-                        
-                except Exception as retry_error:
-                    logger.error(f"Fallback also failed: {str(retry_error)}")
-                    raise Exception("YouTube cambió su sistema. Intenta con otro video o espera unos minutos.")
-                    
-            elif "HTTP Error 403: Forbidden" in error_str:
-                update_yt_dlp()
-                raise Exception("Sistema actualizado. Intenta de nuevo.")
-            elif "Sign in to confirm you're not a bot" in error_str:
-                raise Exception("YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos.")
-            elif "could not copy" in error_str.lower() and "cookie database" in error_str.lower():
-                raise Exception("Error temporal. Intenta de nuevo en unos segundos.")
-            raise
-
-    except Exception as e:
-        # Clean up the temp directory in case of error
-        try:
-            shutil.rmtree(request_tmpdir, ignore_errors=True)
-        except:
-            pass
-        
-        logger.error(f"Error during conversion: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+                
+        except Exception as e:
+            last_error = e
+            logger.warning(f"❌ Download strategy {strategy['name']} failed: {str(e)}")
+            # Clear any partial downloads from this attempt
+            try:
+                for file in os.listdir(request_tmpdir):
+                    os.remove(os.path.join(request_tmpdir, file))
+            except:
+                pass
+            continue
+    
+    # All strategies failed - cleanup and return error
+    try:
+        shutil.rmtree(request_tmpdir, ignore_errors=True)
+    except:
+        pass
+    
+    logger.error("All download strategies failed")
+    
+    if last_error:
+        error_str = str(last_error)
+        if "HTTP Error 403: Forbidden" in error_str:
+            update_yt_dlp()
+            return jsonify({"error": "Sistema actualizado. Intenta de nuevo."}), 503
+        elif "Sign in to confirm you're not a bot" in error_str:
+            return jsonify({"error": "YouTube detectó actividad de bot. Intenta con otro video o espera unos minutos."}), 429
+        elif "Failed to extract any player response" in error_str:
+            return jsonify({"error": "YouTube cambió su sistema. Intenta con otro video o espera unos minutos."}), 503
+    
+    return jsonify({"error": "No se pudo descargar el video. YouTube puede estar bloqueando las solicitudes temporalmente."}), 503
 
 @app.route("/update_ytdlp", methods=["POST"])
 def update_ytdlp_route():
