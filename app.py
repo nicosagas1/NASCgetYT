@@ -1,13 +1,9 @@
+# -*- coding: utf-8 -*-
 """
-YouTube Downloader - Versión Simplificada
+YouTube Downloader - Version Simplificada RENDER-SAFE
 
 Descarga videos de YouTube como MP3 o MP4 directamente a tu navegador.
-Sin necesidad de cookies o configuración complicada.
-
-Funciona con:
-- Videos públicos de YouTube
-- Descargas directas al navegador
-- Reconexión automática si hay errores temporales
+Sin necesidad de cookies o configuracion complicada.
 """
 
 from flask import Flask, request, send_file, jsonify, render_template
@@ -33,10 +29,38 @@ app.secret_key = '7772428b-01cf-4d05-9c3e-cea510398586'
 app.config['TRAP_HTTP_EXCEPTIONS'] = True
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
+# Render-specific configuration
+IS_RENDER = os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_NAME')
+if IS_RENDER:
+    app.config['JSON_SORT_KEYS'] = False
+    app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("RENDER deployment detected - applying production configs")
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    logger = logging.getLogger(__name__)
+
+def safe_log(message, level='info'):
+    """Log messages safely, removing emojis in Render environment."""
+    if IS_RENDER:
+        clean_msg = ''.join(char for char in message if ord(char) < 128)
+        getattr(logger, level)(clean_msg)
+    else:
+        getattr(logger, level)(message)
+
 # Global error handlers to ensure JSON responses
 @app.errorhandler(400)
 def bad_request_error(error):
-    return jsonify({"error": "Solicitud inválida"}), 400
+    return jsonify({"error": "Solicitud invalida"}), 400
 
 @app.errorhandler(401)
 def unauthorized_error(error):
@@ -52,7 +76,7 @@ def not_found_error(error):
 
 @app.errorhandler(405)
 def method_not_allowed_error(error):
-    return jsonify({"error": "Método no permitido"}), 405
+    return jsonify({"error": "Metodo no permitido"}), 405
 
 @app.errorhandler(429)
 def rate_limit_error(error):
@@ -60,7 +84,7 @@ def rate_limit_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"Internal server error: {str(error)}")
+    safe_log(f"Internal server error: {str(error)}", 'error')
     return jsonify({"error": "Error interno del servidor. Intenta de nuevo."}), 500
 
 @app.errorhandler(502)
@@ -74,7 +98,7 @@ def service_unavailable_error(error):
 @app.errorhandler(HTTPException)
 def handle_http_exception(e):
     """Handle all HTTP exceptions and return JSON."""
-    logger.error(f"HTTP exception: {e.code} - {e.description}")
+    safe_log(f"HTTP exception: {e.code} - {e.description}", 'error')
     return jsonify({
         "error": e.description or f"Error HTTP {e.code}",
         "code": e.code
@@ -82,7 +106,7 @@ def handle_http_exception(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    logger.error(f"Unhandled exception: {str(e)}")
+    safe_log(f"Unhandled exception: {str(e)}", 'error')
     return jsonify({"error": f"Error inesperado: {str(e)}"}), 500
 
 @app.before_request
@@ -94,208 +118,231 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    """Force JSON responses for API endpoints and errors."""
+    """RENDER-SAFE: Force JSON responses for API endpoints and errors."""
     try:
-        # API endpoints should ALWAYS return JSON
-        if request.endpoint in ['get_video_info', 'convert', 'update_ytdlp_route', 'handle_options']:
+        endpoint = getattr(request, 'endpoint', None)
+        
+        if response.status_code >= 400:
+            safe_log(f"Response {response.status_code} for {endpoint}: {response.mimetype}", 'warning')
+        
+        api_endpoints = ['get_video_info', 'convert', 'update_ytdlp_route', 'handle_options', 'health_check', 'api_status']
+        if endpoint in api_endpoints:
             if response.mimetype != 'application/json':
-                # Force convert to JSON
                 error_msg = "Error de servidor"
                 if response.status_code == 404:
                     error_msg = "Endpoint no encontrado"
                 elif response.status_code == 405:
-                    error_msg = "Método no permitido"
+                    error_msg = "Metodo no permitido"
                 elif response.status_code >= 500:
                     error_msg = "Error interno del servidor"
                 
-                response.data = json.dumps({"error": error_msg}).encode('utf-8')
+                safe_log(f"FORCING HTML->JSON for {endpoint}: {response.status_code}", 'error')
+                response.data = json.dumps({
+                    "error": error_msg,
+                    "status_code": response.status_code,
+                    "endpoint": endpoint,
+                    "render_safe": True
+                }).encode('utf-8')
                 response.mimetype = 'application/json'
-                
-        # Any error response should be JSON
+        
         elif response.status_code >= 400:
             if response.mimetype != 'application/json':
-                response.data = json.dumps({"error": "Error del servidor"}).encode('utf-8')
+                safe_log(f"FORCING ERROR->JSON: {response.status_code}", 'error')
+                response.data = json.dumps({
+                    "error": "Error del servidor",
+                    "status_code": response.status_code,
+                    "render_safe": True
+                }).encode('utf-8')
                 response.mimetype = 'application/json'
     
-        # Set JSON headers
         if response.mimetype == 'application/json':
             response.headers['Content-Type'] = 'application/json; charset=utf-8'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
         
-        # CORS headers for all responses
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS, HEAD'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Max-Age'] = '86400'
+        response.headers['X-Render-Safe'] = 'true'
         
     except Exception as e:
-        # If anything fails, return safe JSON error
-        logger.error(f"Error in after_request: {e}")
-        response.data = json.dumps({"error": "Error de procesamiento"}).encode('utf-8')
-        response.mimetype = 'application/json'
-        response.headers['Content-Type'] = 'application/json; charset=utf-8'
+        safe_log(f"CRITICAL: after_request failed: {e}", 'error')
+        try:
+            response.data = json.dumps({
+                "error": "Error critico de procesamiento",
+                "render_safe": True,
+                "timestamp": datetime.now().isoformat()
+            }).encode('utf-8')
+            response.mimetype = 'application/json'
+            response.headers['Content-Type'] = 'application/json; charset=utf-8'
+        except:
+            response.data = b'{"error":"Error critico"}'
+            response.mimetype = 'application/json'
     
     return response
 
-# Configure logging with better format
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger(__name__)
-
-# Set FFmpeg path - adjust this to your specific location if needed
+# Set FFmpeg path
 FFMPEG_PATH = r"C:\\ffmpeg\\bin"
 
-# Updated user agents for 2025 - more diverse and recent
+# User agents for 2025
 USER_AGENTS = [
-    # Chrome variants
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    
-    # Firefox variants
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    
-    # Edge variants
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
-    
-    # Mobile variants
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Android 14; Mobile; rv:133.0) Gecko/133.0 Firefox/133.0",
-    "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPad; CPU OS 17_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 ]
 
 def get_random_headers():
-    """Generate random headers to help avoid detection."""
+    """Generate random headers to avoid detection."""
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
+        "Referer": "https://www.youtube.com/"
     }
 
 def get_extraction_strategies():
-    """Get working extraction strategies that actually bypass YouTube in 2025."""
+    """Return multiple extraction strategies for yt-dlp."""
+    base_headers = get_random_headers()
     
-    strategies = [
-        # Strategy 1: Simple Android - Most reliable
+    return [
         {
             "name": "Android Simple",
             "options": {
-                "nocheckcertificate": True,
+                "http_headers": base_headers,
+                "extractor_args": {"youtube": {"player_client": ["android"]}},
                 "socket_timeout": 30,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android"],
-                    }
-                }
+                "retries": 2
             }
         },
-        
-        # Strategy 2: iOS - Often works when others fail
         {
             "name": "iOS",
             "options": {
-                "nocheckcertificate": True,
-                "socket_timeout": 30,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["ios"],
-                    }
-                }
+                "http_headers": base_headers,
+                "extractor_args": {"youtube": {"player_client": ["ios"]}},
+                "socket_timeout": 35,
+                "retries": 2
             }
         },
-        
-        # Strategy 3: Android TV Embedded
         {
             "name": "Android TV",
             "options": {
-                "nocheckcertificate": True,
-                "socket_timeout": 30,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["tv_embedded"],
-                    }
-                }
+                "http_headers": base_headers,
+                "extractor_args": {"youtube": {"player_client": ["android_tv"]}},
+                "socket_timeout": 40,
+                "retries": 3
             }
         },
-        
-        # Strategy 4: Web with minimal config
         {
             "name": "Web Clean",
             "options": {
-                "nocheckcertificate": True,
-                "socket_timeout": 30,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["web"],
-                    }
-                }
+                "http_headers": base_headers,
+                "extractor_args": {"youtube": {"player_client": ["web"]}},
+                "socket_timeout": 45,
+                "retries": 3
             }
         },
-        
-        # Strategy 5: Android Music
         {
             "name": "Music",
             "options": {
-                "nocheckcertificate": True,
-                "socket_timeout": 30,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android_music"],
-                    }
-                }
+                "http_headers": base_headers,
+                "extractor_args": {"youtube": {"player_client": ["android_music"]}},
+                "socket_timeout": 50,
+                "retries": 4
             }
         }
     ]
-    
-    return strategies
-
-def get_robust_options():
-    """Get the most robust options as fallback."""
-    return get_extraction_strategies()[0]["options"]
-
-
 
 def clean_filename(title):
-    """Removes special characters and shortens the filename."""
-    title = re.sub(r'[\\/*?:"<>|]', '', title)
-    return title[:50]
+    """Clean video title to create a valid filename."""
+    if not title:
+        return "video"
+    title = re.sub(r'[<>:"/\\|?*]', '', title)
+    title = re.sub(r'\s+', ' ', title).strip()
+    return title[:100] if len(title) > 100 else title
 
 def update_yt_dlp():
-    """Update yt-dlp to the latest version."""
+    """Update yt-dlp to latest version."""
     try:
-        logger.info("🔄 Updating yt-dlp...")
+        safe_log("Updating yt-dlp...")
         result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], 
-                              capture_output=True, text=True, check=True)
-        logger.info("✅ Successfully updated yt-dlp")
-        return True
+                              capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            safe_log("Successfully updated yt-dlp")
+            return True
+        else:
+            safe_log(f"Failed to update yt-dlp: {result.stderr}", 'error')
+            return False
     except Exception as e:
-        logger.error(f"❌ Failed to update yt-dlp: {str(e)}")
+        safe_log(f"Failed to update yt-dlp: {str(e)}", 'error')
         return False
 
 def check_yt_dlp_version():
-    """Check and ensure we have a working yt-dlp version."""
+    """Check if yt-dlp is available and up to date."""
     try:
         import yt_dlp
-        logger.info(f"yt-dlp version: {yt_dlp.version.__version__}")
         return True
     except Exception as e:
-        logger.warning(f"yt-dlp version check failed: {e}")
+        safe_log(f"yt-dlp version check failed: {e}", 'warning')
         return update_yt_dlp()
 
+# Routes
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/health")
+def health_check():
+    """Health check endpoint for Render deployment monitoring."""
+    try:
+        checks = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "flask": "running",
+            "yt_dlp": "unknown"
+        }
+        
+        try:
+            import yt_dlp
+            checks["yt_dlp"] = "available"
+        except ImportError:
+            checks["yt_dlp"] = "missing"
+            checks["status"] = "degraded"
+        
+        try:
+            if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
+                checks["ffmpeg"] = "available"
+            else:
+                checks["ffmpeg"] = "not_configured"
+        except:
+            checks["ffmpeg"] = "error"
+        
+        return jsonify(checks), 200
+        
+    except Exception as e:
+        safe_log(f"Health check failed: {e}", 'error')
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route("/api/status")
+def api_status():
+    """Simple API status check that ALWAYS returns JSON."""
+    return jsonify({
+        "api": "online",
+        "version": "1.0",
+        "endpoints": ["get_video_info", "convert", "update_ytdlp"],
+        "timestamp": datetime.now().isoformat()
+    }), 200
 
 @app.route("/get_video_info", methods=["OPTIONS"])
 @app.route("/convert", methods=["OPTIONS"])
@@ -308,36 +355,33 @@ def handle_options():
 def get_video_info():
     """Endpoint to fetch video information without downloading."""
     try:
-        # Validate request
         if not request.is_json:
             return jsonify({"error": "Content-Type debe ser application/json"}), 400
             
         data = request.get_json()
         if not data:
-            return jsonify({"error": "JSON inválido o vacío"}), 400
+            return jsonify({"error": "JSON invalido o vacio"}), 400
             
         video_url = data.get("url")
         if not video_url:
             return jsonify({"error": "No URL provided"}), 400
         
-        # Clean URL
         video_url = video_url.strip()
         if not video_url:
-            return jsonify({"error": "URL vacía"}), 400
+            return jsonify({"error": "URL vacia"}), 400
     
     except Exception as e:
-        logger.error(f"Error parsing request: {e}")
+        safe_log(f"Error parsing request: {e}", 'error')
         return jsonify({"error": "Error al procesar la solicitud"}), 400
     
     try:
-        # Try multiple extraction strategies
         strategies = get_extraction_strategies()
         last_error = None
         
         for i, strategy in enumerate(strategies):
             try:
                 strategy_name = strategy.get("name", f"Strategy {i+1}")
-                logger.info(f"🔄 Trying info extraction {i+1}/5: {strategy_name}")
+                safe_log(f"Trying info extraction {i+1}/5: {strategy_name}")
                 
                 options = {
                     "skip_download": True,
@@ -346,18 +390,17 @@ def get_video_info():
                     **strategy.get("options", {})
                 }
                 
-                # Simple delay between attempts
                 if i > 0:
-                    delay = 3 + i  # 3, 4, 5, 6, 7 seconds
-                    logger.info(f"⏳ Waiting {delay}s...")
+                    delay = 3 + i
+                    safe_log(f"Waiting {delay}s...")
                     time.sleep(delay)
                 
                 with yt_dlp.YoutubeDL(options) as ydl:
-                    logger.info(f"📊 Extracting video info using {strategy_name}")
+                    safe_log(f"Extracting video info using {strategy_name}")
                     info = ydl.extract_info(video_url, download=False)
                     
                     if info and info.get("title"):
-                        logger.info(f"🎉 INFO SUCCESS with {strategy_name}: {info.get('title')}")
+                        safe_log(f"INFO SUCCESS with {strategy_name}: {info.get('title')}")
                         return jsonify({
                             "title": info.get("title"),
                             "duration": info.get("duration"),
@@ -371,41 +414,36 @@ def get_video_info():
             except Exception as e:
                 last_error = e
                 error_msg = str(e)
-                logger.warning(f"❌ {strategy_name} failed: {error_msg[:150]}")
+                safe_log(f"{strategy_name} failed: {error_msg[:150]}", 'warning')
                 continue
         
-        # All strategies failed
-        logger.error("🚫 ALL INFO EXTRACTION FAILED")
+        safe_log("ALL INFO EXTRACTION FAILED", 'error')
         
-        if last_error:
-            error_str = str(last_error)
-            logger.error(f"Last error was: {error_str}")
-            
-            # Try updating yt-dlp as last resort
-            logger.info("🔄 Attempting yt-dlp update as last resort...")
+        error_msg = str(last_error) if last_error else "Unknown error"
+        if any(phrase in error_msg.lower() for phrase in ["sign in", "bot", "private", "unavailable"]):
+            safe_log("Attempting yt-dlp update as last resort...")
             update_yt_dlp()
-            
-            return jsonify({"error": "No se pudo obtener información del video. Sistema actualizado automáticamente. Intenta con otro video o espera 10 minutos."}), 503
+            return jsonify({"error": "No se pudo obtener informacion del video. Sistema actualizado automaticamente. Intenta con otro video o espera 10 minutos."}), 503
         
-        return jsonify({"error": "Error desconocido. Intenta con otro video."}), 503
-    
+        return jsonify({"error": "YouTube cambio su sistema. Intenta con otro video o espera unos minutos."}), 503
+        
     except Exception as e:
-        logger.error(f"Critical error in get_video_info: {str(e)}")
-        return jsonify({"error": "Error crítico del servidor. Intenta de nuevo."}), 500
+        safe_log(f"Critical error in get_video_info: {str(e)}", 'error')
+        return jsonify({"error": "Error critico del servidor. Intenta de nuevo."}), 500
 
 @app.route("/convert", methods=["POST"])
 def convert():
+    """Download and convert YouTube videos to MP3 or MP4."""
     try:
-        # Validate request
         if not request.is_json:
             return jsonify({"error": "Content-Type debe ser application/json"}), 400
             
         data = request.get_json()
         if not data:
-            return jsonify({"error": "JSON inválido o vacío"}), 400
+            return jsonify({"error": "JSON invalido o vacio"}), 400
             
         video_url = data.get("url")
-        video_format = data.get("format")  # "mp3" or "mp4"
+        video_format = data.get("format")
         
         if not video_url:
             return jsonify({"error": "No URL provided"}), 400
@@ -413,41 +451,36 @@ def convert():
         if not video_format or video_format not in ["mp3", "mp4"]:
             return jsonify({"error": "Formato debe ser 'mp3' o 'mp4'"}), 400
             
-        # Clean URL
         video_url = video_url.strip()
         if not video_url:
-            return jsonify({"error": "URL vacía"}), 400
-    
+            return jsonify({"error": "URL vacia"}), 400
+            
     except Exception as e:
-        logger.error(f"Error parsing convert request: {e}")
+        safe_log(f"Error parsing convert request: {e}", 'error')
         return jsonify({"error": "Error al procesar la solicitud"}), 400
 
+    request_tmpdir = None
     try:
-        # Create the main temporary directory for this request
         request_tmpdir = tempfile.mkdtemp()
-        
-        # Try multiple extraction strategies for downloads
         strategies = get_extraction_strategies()
         last_error = None
         
         for i, strategy in enumerate(strategies):
             try:
                 strategy_name = strategy.get("name", f"Strategy {i+1}")
-                logger.info(f"🔄 Trying download {i+1}/5: {strategy_name}")
+                safe_log(f"Trying download {i+1}/5: {strategy_name}")
                 
-                # Configure yt-dlp options based on format and strategy
+                if i > 0:
+                    delay = 5 + (i * 2)
+                    safe_log(f"Waiting {delay}s before download retry...")
+                    time.sleep(delay)
+                
                 common_options = {
                     "outtmpl": os.path.join(request_tmpdir, "%(title)s.%(ext)s"),
                     "ffmpeg_location": FFMPEG_PATH,
                     "no_warnings": True,
                     **strategy.get("options", {})
                 }
-                
-                # Simple delay between attempts
-                if i > 0:
-                    delay = 5 + (i * 2)  # 5, 7, 9, 11, 13 seconds
-                    logger.info(f"⏳ Waiting {delay}s before download retry...")
-                    time.sleep(delay)
                 
                 if video_format == "mp4":
                     options = {
@@ -458,114 +491,74 @@ def convert():
                     options = {
                         **common_options,
                         "format": "bestaudio/best",
-                        "postprocessors": [
-                            {
-                                "key": "FFmpegExtractAudio",
-                                "preferredcodec": "mp3",
-                                "preferredquality": "192",
-                            }
-                        ]
+                        "postprocessors": [{
+                            "key": "FFmpegExtractAudio",
+                            "preferredcodec": "mp3",
+                            "preferredquality": "192",
+                        }]
                     }
-
-                logger.info(f"Created temporary directory: {request_tmpdir}")
+                
+                safe_log(f"Starting download with {strategy_name}")
                 
                 with yt_dlp.YoutubeDL(options) as ydl:
-                    logger.info(f"⬇️ Starting download with {strategy_name}")
-                    
-                    # Extract info and download
-                    info = ydl.extract_info(video_url, download=True)
-                    
-                    if not info or not info.get("title"):
-                        raise Exception("Download failed - no video info")
-                    
-                    title = clean_filename(info["title"])
-                    ext = "mp4" if video_format == "mp4" else "mp3"
-                    
-                    # Find any file with the correct extension
-                    downloaded_file = None
-                    files = os.listdir(request_tmpdir)
-                    logger.info(f"📁 Files in directory: {files}")
-                    
-                    for file in files:
+                    ydl.download([video_url])
+                
+                # Find downloaded file
+                ext = "mp3" if video_format == "mp3" else "mp4"
+                downloaded_file = None
+                
+                for root, dirs, filenames in os.walk(request_tmpdir):
+                    for file in filenames:
                         if file.endswith(f".{ext}"):
-                            downloaded_file = os.path.join(request_tmpdir, file)
-                            logger.info(f"✅ Found downloaded file: {file}")
+                            downloaded_file = os.path.join(root, file)
                             break
-                    
-                    if not downloaded_file or not os.path.exists(downloaded_file):
-                        raise Exception(f"No {ext} file found after download")
-                        
-                    # Verify file has content
-                    file_size = os.path.getsize(downloaded_file)
-                    if file_size == 0:
-                        raise Exception("Downloaded file is empty")
-                    
-                    logger.info(f"📊 File size: {file_size} bytes")
-                    
-                    # Set correct mime type
-                    mime_type = "audio/mpeg" if ext == "mp3" else "video/mp4"
-                    
-                    # Send the file to the client
-                    response = send_file(
-                        downloaded_file, 
-                        as_attachment=True, 
-                        download_name=f"{title}.{ext}",
-                        mimetype=mime_type
-                    )
-                    
-                    # Setup cleanup callback
-                    @response.call_on_close
-                    def cleanup():
-                        try:
-                            logger.info(f"🧹 Cleaning up: {request_tmpdir}")
-                            shutil.rmtree(request_tmpdir, ignore_errors=True)
-                        except:
-                            pass
-                    
-                    logger.info(f"🎉 DOWNLOAD SUCCESS with {strategy_name}: {title}.{ext}")
-                    return response
-                    
+                    if downloaded_file:
+                        break
+                
+                if not downloaded_file or not os.path.exists(downloaded_file):
+                    raise Exception(f"No {ext} file found after download")
+                
+                file_size = os.path.getsize(downloaded_file)
+                if file_size == 0:
+                    raise Exception("Downloaded file is empty")
+                
+                safe_log(f"DOWNLOAD SUCCESS with {strategy_name}: {file_size} bytes")
+                
+                title = clean_filename(os.path.basename(downloaded_file))
+                if not title.endswith(f".{ext}"):
+                    title = f"{title}.{ext}"
+                
+                return send_file(
+                    downloaded_file,
+                    as_attachment=True,
+                    download_name=title,
+                    mimetype="audio/mpeg" if ext == "mp3" else "video/mp4"
+                )
+                
             except Exception as e:
                 last_error = e
                 error_msg = str(e)
-                logger.error(f"❌ {strategy_name} failed: {error_msg}")
-                
-                # Clear partial files
-                try:
-                    for file in os.listdir(request_tmpdir):
-                        os.remove(os.path.join(request_tmpdir, file))
-                except:
-                    pass
-                
+                safe_log(f"{strategy_name} failed: {error_msg[:100]}", 'warning')
                 continue
         
-        # All strategies failed - cleanup and return error
-        try:
-            shutil.rmtree(request_tmpdir, ignore_errors=True)
-        except:
-            pass
+        error_msg = str(last_error) if last_error else "Unknown error"
         
-        logger.error("🚫 ALL DOWNLOAD STRATEGIES FAILED")
+        if any(phrase in error_msg.lower() for phrase in ["sign in", "bot", "private", "unavailable"]):
+            safe_log("ALL DOWNLOAD STRATEGIES FAILED - YouTube blocks", 'error')
+            return jsonify({"error": "YouTube bloqueo la descarga. Intenta con otro video."}), 503
         
-        if last_error:
-            error_str = str(last_error)
-            logger.error(f"Last download error: {error_str}")
-            
-            # Update yt-dlp as last resort
-            logger.info("🔄 Updating yt-dlp after download failures...")
-            update_yt_dlp()
-            
-            return jsonify({"error": "No se pudo descargar el video. Sistema actualizado automáticamente. Intenta con otro video o espera 15 minutos."}), 503
-        
-        return jsonify({"error": "Error de descarga desconocido. Intenta con otro video."}), 503
+        return jsonify({"error": "YouTube cambio su sistema. Intenta con otro video o espera unos minutos."}), 503
         
     except Exception as e:
-        logger.error(f"Critical error in convert: {str(e)}")
-        try:
-            shutil.rmtree(request_tmpdir, ignore_errors=True)
-        except:
-            pass
-        return jsonify({"error": "Error crítico del servidor. Intenta de nuevo."}), 500
+        safe_log(f"Critical error in convert: {str(e)}", 'error')
+        return jsonify({"error": "Error critico del servidor. Intenta de nuevo."}), 500
+    
+    finally:
+        if request_tmpdir:
+            try:
+                shutil.rmtree(request_tmpdir, ignore_errors=True)
+            except:
+                pass
 
 @app.route("/update_ytdlp", methods=["POST"])
 def update_ytdlp_route():
@@ -576,14 +569,28 @@ def update_ytdlp_route():
     else:
         return jsonify({"error": "Failed to update yt-dlp"}), 500
 
-
-
 if __name__ == '__main__':
-    logger.info("🚀 Starting YouTube Downloader...")
+    safe_log("Starting YouTube Downloader...")
     
-    # Check yt-dlp version on startup
+    safe_log(f"Python version: {sys.version}")
+    safe_log(f"Environment: {os.environ.get('FLASK_ENV', 'development')}")
+    safe_log(f"Debug mode: {app.debug}")
+    
     if not check_yt_dlp_version():
-        logger.error("❌ Could not verify yt-dlp installation")
+        safe_log("Could not verify yt-dlp installation", 'error')
+    else:
+        safe_log("yt-dlp verified successfully")
     
-    logger.info("✅ Application ready at http://localhost:5000")
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    with app.test_client() as client:
+        try:
+            response = client.get('/health')
+            if response.status_code == 200:
+                safe_log("Health check endpoint working")
+            else:
+                safe_log(f"Health check returned {response.status_code}", 'warning')
+        except Exception as e:
+            safe_log(f"Health check failed: {e}", 'error')
+    
+    port = int(os.environ.get('PORT', 5000))
+    safe_log(f"Application ready at http://0.0.0.0:{port}")
+    app.run(debug=False, host='0.0.0.0', port=port)

@@ -11,7 +11,20 @@ async function getVideoInfo(url) {
         
         if (!response.ok) throw new Error("Error fetching video info");
         
-        return await response.json();
+        // PROTECTION: Check if response is actually JSON
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            console.warn("Server returned non-JSON response:", contentType);
+            return null;
+        }
+        
+        const text = await response.text();
+        if (text.trim().startsWith('<')) {
+            console.warn("Server returned HTML instead of JSON:", text.substring(0, 100));
+            return null;
+        }
+        
+        return JSON.parse(text);
     } catch (err) {
         console.error("Error fetching video info:", err);
         return null;
@@ -49,8 +62,20 @@ async function convertir(formato) {
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Error en la descarga");
+            // PROTECTION: Check if error response is JSON
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                try {
+                    const text = await response.text();
+                    if (!text.trim().startsWith('<')) {
+                        const errorData = JSON.parse(text);
+                        throw new Error(errorData.error || "Error en la descarga");
+                    }
+                } catch (parseErr) {
+                    console.warn("Failed to parse error response:", parseErr);
+                }
+            }
+            throw new Error(`Error del servidor (${response.status})`);
         }
 
         const blob = await response.blob();
